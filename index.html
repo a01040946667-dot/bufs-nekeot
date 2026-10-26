@@ -1248,20 +1248,57 @@ p{margin:0;color:#4A4E57;font-size:14px;line-height:1.6}</style>
 if(/iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent)&&navigator.canShare&&navigator.canShare({files:[f]}))await navigator.share({files:[f]});
 else{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=f.name;a.click()}s.textContent='사진 저장'}
 catch(e){s.textContent=e.name==='AbortError'?'사진 저장':'다시 눌러 주세요'}s.disabled=false}<\/script>`;
+// 폰으로 받기 저장소: 내 Supabase Storage (2026-10-26, Litterbox 장애로 바꿈). 사진만 올리고, 받기 페이지는 GitHub Pages의 r.html
+// 비어 있으면 예전 방식(Litterbox)만 씀. 키는 공개용(anon/publishable) 키라 화면 코드에 넣어도 됨: 권한은 버킷 정책이 막음
+// (정책: 아무나 jpg 올리기만 가능, 목록 보기·지우기는 1시간 지난 사진만 → 부스가 올릴 때마다 1시간 지난 사진을 지움)
+const SB_URL = 'https://khmkdznemafpjoyqgrnl.supabase.co', SB_BUCKET = 'nekeot',
+  SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtobWtkem5lbWFmcGpveXFncm5sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwMTEwNDksImV4cCI6MjEwODU4NzA0OX0.mfUwRKk1WZPFRKzDJL61tWLTu4xzS-YDIzyFNtRXMMc'; // anon(공개) 키
+const RECEIVE_PAGE = 'https://a01040946667-dot.github.io/bufs-nekeot/r.html';
+// 새 형식 키(sb_publishable_...)는 JWT가 아니라 apikey 헤더만 보냄, 예전 anon 키(eyJ...)는 Authorization도 같이
+const sbHeaders = type => ({apikey: SB_KEY, ...(SB_KEY.startsWith('sb_') ? {} : {Authorization: `Bearer ${SB_KEY}`}), 'Content-Type': type});
+async function sbUpload(blob, name, tries = 2) {
+  try {
+    const res = await fetch(`${SB_URL}/storage/v1/object/${SB_BUCKET}/${name}`, {method: 'POST', headers: sbHeaders('image/jpeg'), body: blob, signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS)});
+    if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 60)}`);
+    return `${SB_URL}/storage/v1/object/public/${SB_BUCKET}/${name}`;
+  } catch (e) {
+    if (tries > 1) return sbUpload(blob, name, tries - 1);
+    throw e.name === 'TimeoutError' ? new Error('시간 초과') : e;
+  }
+}
+async function sbCleanup() { // 1시간 지난 사진 지우기 (정책상 그것만 보이고 지워짐). 실패해도 다음에 다시 함
+  try {
+    const res = await fetch(`${SB_URL}/storage/v1/object/list/${SB_BUCKET}`, {method: 'POST', headers: sbHeaders('application/json'), body: JSON.stringify({prefix: '', limit: 1000})});
+    const old = (await res.json()).map(o => o.name).filter(Boolean);
+    if (old.length) await fetch(`${SB_URL}/storage/v1/object/${SB_BUCKET}`, {method: 'DELETE', headers: sbHeaders('application/json'), body: JSON.stringify({prefixes: old})});
+  } catch {}
+}
+// 사진을 올리고 QR에 넣을 주소를 돌려줌: Supabase가 되면 r.html?i=사진, 안 되면 예전 Litterbox 방식
+async function phoneLink(blob, name, step) {
+  if (SB_URL) {
+    try {
+      const img = await sbUpload(blob, name);
+      sbCleanup();
+      return `${RECEIVE_PAGE}?i=${encodeURIComponent(img)}&t=${encodeURIComponent(T.title)}`;
+    } catch (e) { console.warn('Supabase 실패, Litterbox로', e); }
+  }
+  const img = await upload(blob, name);
+  step();
+  return upload(new Blob([phonePage(img, name)], {type: 'text/html'}), 'nekeot.html');
+}
 $('phone').onclick = async () => {
   const dlg = $('qrDlg'), msg = $('qrMsg');
   $('qr').innerHTML = '<div class="qrwait"><i class="ph-bold ph-cloud-arrow-up"></i><b id="qrPct">0%</b><div class="bar"><span id="qrBar"></span></div></div>';
-  msg.textContent = '사진을 올리고 있어요 (1/2)'; dlg.showModal();
+  msg.textContent = '사진을 올리고 있어요'; dlg.showModal();
   // ponytail: 진행률은 시간으로 채움 (단계 상한 cap까지 천천히). 실제 업로드 진행률은 XHR upload 이벤트가 CORS 사전 요청을 만들어 Litterbox가 거절할 수 있어서 안 씀
   let pct = 0, cap = 70;
   const show = v => { pct = v; $('qrBar').style.width = `${v}%`; $('qrPct').textContent = `${Math.round(v)}%`; };
   const tick = setInterval(() => show(pct + (cap - pct) * .06), 200);
   try {
     // JPEG: PNG는 6~10MB라 올리고 받는 데 오래 걸림 (JPEG .92는 약 1MB, 2026-10-24)
-    const name = `nekeot_${stamp()}.jpg`;
-    const img = await upload(await new Promise(r => strip.toBlob(r, 'image/jpeg', .92)), name);
-    show(Math.max(pct, 75)); cap = 95; msg.textContent = 'QR을 만들고 있어요 (2/2)';
-    const page = await upload(new Blob([phonePage(img, name)], {type: 'text/html'}), 'nekeot.html');
+    const name = `nekeot_${stamp()}_${crypto.randomUUID().slice(0, 8)}.jpg`; // 주소를 짐작할 수 없게 무작위 글자
+    const page = await phoneLink(await new Promise(r => strip.toBlob(r, 'image/jpeg', .92)), name,
+      () => { show(Math.max(pct, 75)); cap = 95; msg.textContent = 'QR을 만들고 있어요 (2/2)'; });
     clearInterval(tick); show(100); await new Promise(r => setTimeout(r, 300)); // 100%를 잠깐 보여 줌
     $('qr').replaceChildren();
     new QRCode($('qr'), {text: page, width: 240, height: 240});
