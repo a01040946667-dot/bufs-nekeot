@@ -16,7 +16,10 @@ p{margin:0;color:#4A4E57;font-size:14px;line-height:1.6}
 <button id="s">사진 저장</button>
 <p id="m">안 되면 사진을 길게 눌러 저장하세요.<br>1시간 뒤 자동으로 지워져요.</p>
 <script>
-const q = new URLSearchParams(location.search), src = q.get('i') || '', name = 'nekeot.jpg';
+// n = 부스가 올린 파일 이름 (Supabase nekeot 버킷), i = 사진 전체 주소 (예전 방식)
+const SB_PUBLIC = 'https://khmkdznemafpjoyqgrnl.supabase.co/storage/v1/object/public/nekeot/';
+const q = new URLSearchParams(location.search), n = q.get('n') || '', name = 'nekeot.jpg';
+const src = /^[\w.-]+$/.test(n) ? SB_PUBLIC + n + '.jpg' : (q.get('i') || '');
 // 사진 주소는 https만 (다른 형식은 무시)
 if (/^https:\/\//.test(src)) p.src = src; else { p.hidden = s.hidden = true; m.textContent = '사진 주소가 올바르지 않아요.'; }
 h.textContent = document.title = (q.get('t') || '네컷').slice(0, 30);

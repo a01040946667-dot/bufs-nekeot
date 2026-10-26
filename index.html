@@ -1279,7 +1279,7 @@ async function phoneLink(blob, name, step) {
     try {
       const img = await sbUpload(blob, name);
       sbCleanup();
-      return `${RECEIVE_PAGE}?i=${encodeURIComponent(img)}&t=${encodeURIComponent(T.title)}`;
+      return `${RECEIVE_PAGE}?n=${name.replace('.jpg', '')}&t=${encodeURIComponent(T.title)}`; // 파일 이름만 (QR이 덜 촘촘하게), r.html이 주소를 만듦
     } catch (e) { console.warn('Supabase 실패, Litterbox로', e); }
   }
   const img = await upload(blob, name);
