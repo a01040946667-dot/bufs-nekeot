@@ -1,0 +1,1323 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ECEDEF">
+<title>네컷 부스</title>
+<link rel="stylesheet" href="vendor/phosphor-bold.css">
+<style>
+@font-face{font-family:"Pretendard Variable";src:url(vendor/PretendardVariable.woff2) format("woff2-variations"),url(vendor/PretendardVariable.woff2) format("woff2");font-weight:45 920;font-display:swap}
+/* 키오스크용 단일 라이트 테마: 밝은 부스 + 핑크 포인트 하나 */
+:root{
+  --ground:#ECEDEF; --surface:#FFFFFF; --ink:#141518; --mute:#5E626B; --line:#D5D7DC;
+  --pop:#FF3D7F;
+  --shadow:0 18px 50px rgba(20,21,24,.16);
+  --r:20px;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--ground);color:var(--ink);
+  font-family:"Pretendard Variable",Pretendard,system-ui,sans-serif;letter-spacing:-.01em;
+  overflow:hidden;user-select:none;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:3px solid var(--pop);outline-offset:3px}
+
+/* 상단 바: 이전 + 단계 표시 */
+header{position:fixed;inset:0 0 auto;height:72px;display:grid;grid-template-columns:170px 1fr 170px;align-items:center;padding:0 20px;z-index:3}
+/* 이전·처음으로: 손가락으로 누르기 쉬운 큰 알약 버튼 */
+.back{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:54px;padding:0 22px;border:1px solid var(--line);border-radius:99px;
+  background:var(--surface);font-size:18px;font-weight:700;color:var(--ink);justify-self:start;white-space:nowrap}
+.back i{font-size:22px}
+.back.home{grid-column:3;justify-self:end}
+.stepper{grid-column:2;display:flex; /* 촬영 중 이전 버튼이 숨어도 가운데 칸에 고정 */justify-content:center;gap:6px;margin:0;padding:0;list-style:none}
+.stepper li{white-space:nowrap;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:var(--mute);padding:8px 14px;border-radius:99px}
+.stepper li b{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--line);color:var(--mute);font-size:12px}
+.stepper li.done b{background:var(--ink);color:#fff}
+.stepper li.now{background:var(--surface);color:var(--ink)}
+.stepper li.now b{background:var(--pop);color:var(--ink)}
+
+/* 화면 공통 */
+.screen{position:fixed;inset:72px 0 0;display:flex;gap:40px;padding:12px 40px 32px;animation:enter .45s cubic-bezier(.16,1,.3,1)}
+.screen.full{inset:0;padding:40px 56px}
+@keyframes enter{from{opacity:0;transform:translateX(24px)}}
+h1{margin:0;font-size:34px;font-weight:800;letter-spacing:-.03em;line-height:1.2;text-wrap:balance}
+.sub{margin:8px 0 0;font-size:17px;color:var(--mute);line-height:1.5}
+.col{display:flex;flex-direction:column;gap:24px;min-width:0;min-height:0}
+.grow{flex:1}
+.slot{display:flex;align-items:center;justify-content:center;min-height:0}
+
+/* 버튼 */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;white-space:nowrap;border-radius:99px;
+  padding:16px 28px;font-size:18px;font-weight:700;background:var(--surface);border:1px solid var(--line);transition:transform .15s}
+.btn:active{transform:scale(.97)}
+.btn i{font-size:22px}
+.btn.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+.btn.pop{background:var(--pop);color:var(--ink);border-color:var(--pop)}
+.btn.big{padding:22px 44px;font-size:22px}
+.btn.quiet{background:transparent;border-color:transparent;color:var(--mute)}
+.actions{display:flex;gap:12px;flex-wrap:wrap}
+
+/* 시작 */
+.hero{display:flex;flex-direction:column;justify-content:center;gap:36px;flex:1;max-width:520px}
+.hero h1{font-size:64px;letter-spacing:-.04em}
+.hero .sub{font-size:20px}
+.fan{flex:1;position:relative;min-width:0;container-type:size}
+/* 부채꼴 카드 = 실제 네컷 세로 프레임 (canvas, 1:3) */
+.fan canvas{position:absolute;top:50%;left:50%;height:min(94cqh,120cqw);width:auto;border-radius:4px;box-shadow:var(--shadow)}
+.fan canvas:nth-child(1){transform:translate(-145%,-50%) rotate(-8deg)}
+.fan canvas:nth-child(2){transform:translate(-50%,-52%) rotate(-1deg);z-index:1}
+.fan canvas:nth-child(3){transform:translate(45%,-50%) rotate(7deg)}
+/* 시작 화면 등장: 카드가 가운데 모였다 펼쳐지고, 그 뒤 살짝 떠다님 (translate는 transform과 따로 합쳐짐) */
+[data-screen="start"]{animation:none;isolation:isolate;
+  --b1:rgba(255,61,127,.28);--b2:rgba(120,180,255,.34);--b3:rgba(255,196,120,.32)}/* 시작 배경: 번진 색 덩어리가 천천히 흐름 (fixed라 세로 화면 스크롤을 안 만듦) */
+[data-screen="start"]::before{content:"";position:fixed;inset:-25%;z-index:-2;
+  background:radial-gradient(38% 34% at 22% 30%,var(--b1),transparent 70%),
+    radial-gradient(36% 40% at 78% 24%,var(--b2),transparent 70%),
+    radial-gradient(42% 36% at 64% 82%,var(--b3),transparent 70%);
+  filter:blur(20px);animation:drift 18s ease-in-out infinite alternate}
+[data-theme="startup"] [data-screen="start"]{--b1:rgba(30,90,200,.32);--b2:rgba(255,140,40,.34);--b3:rgba(80,170,255,.3)} /* 부산 바다 파랑 + 주황 */
+[data-theme="bufs"]{--pop:#F28C28} /* 부산외대 전공설명회: 행사 포스터 가을 주황 */
+[data-theme="bufs"] [data-screen="start"]{--b1:rgba(40,160,160,.34);--b2:rgba(242,140,40,.34);--b3:rgba(250,200,90,.32)} /* 부스 청록 + 가을 주황·노랑 */
+@keyframes drift{to{transform:translate(6%,-4%) rotate(8deg) scale(1.08)}}
+/* 교회·부외대 테마: 언덕 위 건물 그림을 배경으로, 아주 천천히 다가감 */
+:is([data-theme="church"],[data-theme="bufs"]) [data-screen="start"]::before{inset:0;filter:none;
+  background:url(frames/church-morning-sq.jpg) center bottom/cover;animation:approach 40s ease-in-out infinite alternate}
+[data-theme="bufs"] [data-screen="start"]::before{background-image:url(frames/bufs-start-sq.jpg)} /* 부외대: 가을 캠퍼스 (교회 배경과 같은 구도) */
+@media (orientation:portrait){[data-theme="bufs"] [data-screen="start"]::before{background-image:url(frames/bufs-start-bg.jpg)}}
+@media (orientation:portrait){[data-theme="church"] [data-screen="start"]::before{background-image:url(frames/church-morning-bg.jpg)}} /* 시작 배경 전용 (프레임용 church-morning.jpg는 풍경을 아래로 내려서 교회가 작음) */
+:is([data-theme="church"],[data-theme="bufs"]) .hero .sub{color:#2A2F38} /* 하늘 위라 회색은 흐림 */
+/* 교회 테마: 시작 버튼은 하단 가운데 크게 흰색, 카드는 작게 위로 올려 아래 교회가 보이게 */
+:is([data-theme="church"],[data-theme="bufs"]) [data-screen="start"]{padding-bottom:150px}
+:is([data-theme="church"],[data-theme="bufs"]) #startBtn{position:fixed;left:50%;bottom:36px;translate:-50% 0;z-index:2;
+  background:#fff;border-color:#fff;color:var(--ink);padding:30px 84px;font-size:30px;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+:is([data-theme="church"],[data-theme="bufs"]) #startBtn i{font-size:32px}
+:is([data-theme="church"],[data-theme="bufs"]) .fan canvas{--fh:min(60cqh,78cqw);height:var(--fh);top:32%} /* --fh = 카드 높이 */
+@media (orientation:portrait){:is([data-theme="church"],[data-theme="bufs"]) .fan canvas{--fh:min(74cqh,94cqw);top:calc(var(--fh)/2 + 16px);left:35%}} /* 세로: 글자 바로 밑, 교회(오른쪽 아래) 왼쪽에 */
+@media (orientation:landscape){:is([data-theme="church"],[data-theme="bufs"]) .fan canvas{top:42%;left:66%}}
+/* 부외대는 4x6 카드(2:3)라 폭이 넓으므로 작게 */
+[data-theme="bufs"] .fan canvas{--fh:min(40cqh,44cqw)}
+@media (orientation:landscape){[data-theme="bufs"] .fan canvas{left:58%}}
+[data-theme="bufs"] #startBtn{bottom:90px} /* 시작 버튼 조금 위로 */
+@media (orientation:portrait){[data-theme="bufs"] .fan canvas{--fh:min(40cqh,40cqw);left:38%}}
+@keyframes approach{from{transform:scale(1.02)}to{transform:scale(1.1);transform-origin:70% 85%}}
+.fan canvas{animation:deal 1.4s cubic-bezier(.16,1,.3,1) both,bob 5s ease-in-out 1.8s infinite}
+.fan canvas:nth-child(2){animation-delay:.2s,2.2s}
+.fan canvas:nth-child(3){animation-delay:.4s,2.6s}
+@keyframes deal{from{opacity:0;transform:translate(-50%,-40%) rotate(0) scale(.85)}}
+@keyframes bob{50%{translate:0 -12px}}
+.hero>*{animation:up 1.1s cubic-bezier(.16,1,.3,1) both}
+.hero>:nth-child(2){animation-delay:.5s}
+@keyframes up{from{opacity:0;transform:translateY(20px)}}
+#startBtn{animation:breathe 2.4s ease-in-out 1.8s infinite}
+@keyframes breathe{50%{box-shadow:0 0 0 12px rgba(255,61,127,.18)}}
+/* 감싼 div가 transform 애니메이션을 하면 fixed 버튼이 그 안에 갇히므로, 등장 애니메이션을 버튼으로 옮김 */
+:is([data-theme="church"],[data-theme="bufs"]) .hero>:nth-child(2){animation:none}
+:is([data-theme="church"],[data-theme="bufs"]) #startBtn{animation:up 1.1s cubic-bezier(.16,1,.3,1) .5s both,breathe-w 2.4s ease-in-out 1.8s infinite}
+@keyframes breathe-w{50%{box-shadow:0 0 0 14px rgba(255,255,255,.45)}}
+
+/* 모양 선택 */
+.choices{display:flex;gap:28px;justify-content:center;align-items:stretch;flex:1;min-height:0}
+.choice{display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:18px;width:340px;padding:28px;
+  background:var(--surface);border:2px solid transparent;border-radius:var(--r);transition:border-color .2s,transform .15s}
+.choice:active{transform:scale(.98)}
+.choice[aria-pressed="true"]{border-color:var(--pop)}
+.choice .pv{flex:1;min-height:0;display:flex;align-items:center}
+.choice canvas{max-height:100%;max-width:100%;box-shadow:0 6px 20px rgba(20,21,24,.14)}
+.choice strong{font-size:22px;font-weight:800}
+.choice span{font-size:15px;color:var(--mute);margin-top:-12px}
+
+/* 결과 미리보기 */
+.print{position:relative;height:100%;max-width:100%;aspect-ratio:1/3;box-shadow:0 2px 4px rgba(20,21,24,.08),var(--shadow)}
+.print.square{aspect-ratio:2/3}
+#strip{display:block;width:100%;height:100%}
+.cut{position:absolute;border:0;padding:0;background:transparent;border-radius:6px;display:none;pointer-events:none}
+.cut span{pointer-events:auto}
+.cut[hidden]{display:none!important} /* 3컷 프레임에서 안 쓰는 칸 */
+.print.ready{touch-action:none}
+.print.pen .cut{display:none!important}
+.stickers{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:8px;max-height:min(28dvh,250px);overflow:auto;padding:3px}
+.stickers button{font-size:30px;line-height:1;padding:8px 0;display:grid;place-items:center;min-height:52px;border-radius:14px;border:2px solid var(--line);background:var(--surface)}
+.stickers button[aria-pressed="true"]{border-color:var(--pop)}
+.stickers img{width:36px;height:36px;object-fit:contain}
+.print.ready .cut{display:block}
+.cut span{position:absolute;right:6px;top:6px;display:inline-flex;align-items:center;gap:4px;
+  padding:5px 10px;border-radius:99px;background:rgba(20,21,24,.7);color:#fff;font-size:13px;font-weight:700}
+.cut:focus-visible{background:rgba(255,61,127,.2)}
+
+/* 프레임 선택 */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:14px;overflow:auto;padding:4px;align-content:start}
+.tile{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 8px;background:var(--surface);
+  border:2px solid transparent;border-radius:16px;font-size:14px;font-weight:700}
+.tile[aria-pressed="true"]{border-color:var(--pop)}
+.tile .pv{height:132px;display:flex;align-items:center}
+.tile canvas{height:100%;width:auto;border-radius:3px;box-shadow:0 2px 8px rgba(20,21,24,.15)}
+.tile.add{border:2px dashed var(--line);background:transparent;color:var(--mute);justify-content:center;cursor:pointer}
+.tile.add i{font-size:30px}
+.tile{position:relative}
+.tile .del{position:absolute;top:6px;right:6px;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:rgba(20,21,24,.75);color:#fff;font-size:16px}
+#tiles .admin{display:none} body[data-admin] #tiles .tile.admin{display:flex}
+.tile.add:focus-within{outline:3px solid var(--pop);outline-offset:3px}
+
+/* 촬영 */
+/* 카메라는 전체 화면. 가운데 밝은 틀(.guide)이 실제로 찍히는 영역이고 밖은 흐리게(.blurout).
+   --a = 지금 모양의 사진 칸 비율 (세로 네컷 3:2, 4x6 네컷 세로형). capture()가 이 틀 위치 그대로 잘라 찍음 */
+.view{position:fixed;inset:0;overflow:hidden;background:#1d1e22;container-type:size}
+video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.view{--gw:min(calc(100cqw - 48px),calc((100cqh - 84px - 160px)*var(--a,1.5))); /* 틀 폭: 위 바 84px, 아래 셔터 160px 남김 */
+  --gt:calc(84px + (100cqh - 84px - 160px - var(--gw)/var(--a,1.5))/2)} /* 틀 위치: 그 사이 세로 가운데 (세로 탭에서 얼굴이 화면 가운데 오므로) */
+.guide{position:absolute;left:50%;top:var(--gt);transform:translateX(-50%);width:var(--gw);aspect-ratio:var(--a,1.5);pointer-events:none;
+  outline:3px solid rgba(255,255,255,.9)}
+/* 틀 밖(잘려 나가는 부분)은 흐리게: 화면 전체를 블러로 덮고 틀 자리만 마스크로 뚫음 */
+.blurout{position:absolute;inset:0;pointer-events:none;background:rgba(10,10,12,.18);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  --m:linear-gradient(#000 0 0);
+  -webkit-mask:var(--m) 0 0/100% 100% no-repeat,var(--m) 50% var(--gt)/var(--gw) calc(var(--gw)/var(--a,1.5)) no-repeat;
+  -webkit-mask-composite:xor;
+  mask:var(--m) 0 0/100% 100% no-repeat exclude,var(--m) 50% var(--gt)/var(--gw) calc(var(--gw)/var(--a,1.5)) no-repeat}
+.steps{position:absolute;bottom:150px;left:50%;transform:translateX(-50%);width:min(420px,70vw);display:flex;gap:8px}
+.steps i{flex:1;height:5px;border-radius:99px;background:rgba(255,255,255,.35);transition:background .3s}
+.steps i.done{background:#fff}
+.steps i.now{background:var(--pop)}
+.count{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:32px;color:#fff}
+.count span{font-weight:900;font-size:min(26vw,34vh);line-height:1;font-variant-numeric:tabular-nums;
+  text-shadow:0 8px 40px rgba(0,0,0,.35);animation:tick 1s cubic-bezier(.16,1,.3,1)}
+@keyframes tick{from{transform:scale(1.35);opacity:0}30%{opacity:1}to{transform:scale(1)}}
+.count.msg{background:rgba(20,21,24,.72);font-size:20px;font-weight:600;line-height:1.6}
+.flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .5s}
+.flash.on{opacity:1;transition:none}
+.shutter{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:2;display:flex;flex-direction:column;align-items:center;gap:8px;
+  background:none;border:0;padding:0;font-weight:700;font-size:16px;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.5)}
+.shutter b{display:block;width:84px;height:84px;border-radius:50%;background:var(--pop);
+  box-shadow:0 0 0 6px rgba(255,255,255,.25),0 0 0 9px #fff;transition:transform .15s}
+.shutter:active b{transform:scale(.93)}
+.shutter:disabled{opacity:.35}
+.toggle.autofix{position:fixed;right:24px;bottom:44px;z-index:2;color:#fff;background:rgba(20,21,24,.55);padding:10px 16px;border-radius:99px}
+
+/* 확인/완성 오른쪽 패널 */
+.panel{width:380px;flex:none;justify-content:center}
+/* 꾸미기: 결과물은 화면 가운데 크게. 도구(문구·펜·스티커)는 갤럭시 엣지 패널처럼 오른쪽에서 밀려 나옴 */
+[data-screen="review"]{padding:8px 24px 16px;justify-content:center}
+[data-screen="review"] .slot{overflow:hidden;flex:1}
+#reviewPanel{position:fixed;top:84px;right:0;bottom:104px;width:min(360px,86vw);z-index:4;justify-content:flex-start;overflow:auto;
+  padding:22px 20px 20px 24px;background:var(--surface);border-radius:24px 0 0 24px;box-shadow:-12px 0 40px rgba(20,21,24,.18);
+  transform:translateX(105%);transition:transform .32s cubic-bezier(.16,1,.3,1)}
+#reviewPanel.open{transform:none}
+.edge{position:fixed;top:50%;right:0;z-index:5;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+  width:40px;height:132px;padding:0;border:0;border-radius:16px 0 0 16px;background:var(--ink);color:#fff;font-size:15px;font-weight:700;
+  box-shadow:-4px 0 16px rgba(20,21,24,.2);transition:right .32s cubic-bezier(.16,1,.3,1);touch-action:none}
+.edge span{writing-mode:vertical-rl;letter-spacing:.1em}
+.edge i{font-size:20px;transition:transform .32s}
+#reviewPanel.open ~ .edge{right:min(360px,86vw)}
+#reviewPanel.open ~ .edge i{transform:rotate(180deg)}
+.fab{position:fixed;right:24px;bottom:24px;z-index:5;box-shadow:var(--shadow)}
+#stickerTools .stickers{max-height:none}
+/* 촬영 중 위쪽 바: 카메라 위라 어둡게 깔고 글자는 흰색 */
+body[data-at="shoot"] header{background:linear-gradient(rgba(10,10,12,.6),transparent)}
+body[data-at="shoot"] .stepper li:not(.now){color:rgba(255,255,255,.9)}
+body[data-at="shoot"] .stepper li.done b{background:#fff;color:var(--ink)}
+.field{display:flex;flex-direction:column;gap:8px}
+.field label{font-size:14px;font-weight:700;color:var(--mute)}
+#caption,#gptWish{font:inherit;font-size:20px;font-weight:700;color:var(--ink);background:var(--surface);
+  border:1px solid var(--line);border-radius:14px;padding:14px 16px;width:100%}
+.toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:15px;font-weight:600}
+.toggle input{appearance:none;width:46px;height:28px;border-radius:99px;background:var(--line);position:relative;cursor:pointer;transition:background .2s;margin:0;flex:none}
+.toggle input::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(20,21,24,.25)}
+.toggle input:checked{background:var(--pop)}
+.toggle input:checked::after{transform:translateX(18px)}
+.field input[type=range]{width:100%;accent-color:var(--pop);height:28px;margin:0}
+.swatches{display:flex;flex-wrap:wrap;gap:10px}
+.swatches button{width:38px;height:38px;border-radius:50%;border:2px solid var(--line);padding:0}
+.swatches button.auto{width:auto;padding:0 14px;border-radius:99px;background:var(--surface);font-size:14px;font-weight:700}
+.swatches button[aria-pressed="true"]{outline:3px solid var(--pop);outline-offset:2px}
+.modes,.seg{display:flex;background:var(--line);border-radius:99px;padding:4px}
+.seg[hidden]{display:none}
+.modes button,.seg button{flex:1;border:0;border-radius:99px;padding:12px;background:none;font-size:16px;font-weight:700;color:var(--mute);display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.modes button[aria-pressed="true"],.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(20,21,24,.15)}
+.stack{display:flex;flex-direction:column;gap:12px}
+.stack .btn{width:100%}
+
+/* QR */
+dialog{border:0;border-radius:var(--r);padding:32px 36px;background:var(--surface);color:var(--ink);
+  text-align:center;max-width:min(90vw,400px);box-shadow:var(--shadow)}
+dialog::backdrop{background:rgba(20,21,24,.45)}
+dialog h2{margin:0;font-size:24px;font-weight:800}
+#gptWish{font-size:17px;resize:none;margin-bottom:18px;text-align:left}
+#qr{display:inline-block;padding:14px;border-radius:14px;border:1px solid var(--line);margin-block:18px}
+#qr img,#qr canvas{display:block}
+dialog p{margin:0 0 18px;color:var(--mute);line-height:1.6}
+.copies{display:flex;align-items:center;justify-content:center;gap:24px;margin:24px 0 28px}
+.copies .btn{width:72px;height:72px;padding:0;justify-content:center;border-radius:50%}
+.copies .btn i{font-size:28px}
+#cpN{min-width:2ch;font-size:56px;font-weight:800;font-variant-numeric:tabular-nums}
+/* QR 만드는 동안: 올라가는 아이콘 + 퍼센트 + 진행 바 */
+.qrwait{width:240px;height:240px;border-radius:8px;background:#F0F1F3;display:grid;place-content:center;justify-items:center;gap:12px}
+.qrwait i{font-size:56px;color:var(--pop);animation:bob 1.2s ease-in-out infinite}
+.qrwait b{font-size:34px;font-weight:800}
+.qrwait .bar{width:180px;height:10px;border-radius:99px;background:#DADCE0;overflow:hidden}
+.qrwait .bar span{display:block;height:100%;width:0;background:var(--pop);transition:width .3s}
+
+.toast{position:fixed;left:50%;bottom:32px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;
+  padding:14px 22px;border-radius:99px;background:var(--ink);color:#fff;font-size:16px;font-weight:700;box-shadow:var(--shadow);animation:rise .3s cubic-bezier(.16,1,.3,1)}
+@keyframes rise{from{opacity:0;transform:translate(-50%,12px)}}
+#printImg{display:none}
+@page{size:100mm 148mm;margin:0} /* 캐논 SELPHY CP1500 엽서 용지 */
+@media print{
+  body{background:#fff}
+  body>*{display:none!important}
+  #printImg{display:block!important;width:100mm;height:148mm;object-fit:cover} /* 엽서를 꽉 채움 (앱 인쇄와 같음) */
+}
+@media (orientation:portrait){
+  header{grid-template-columns:auto 1fr auto;gap:12px;padding:0 20px}
+  .stepper li:not(.now) span{display:none}
+  .stepper{gap:2px} .stepper li{padding:8px 8px} .back{padding:0 16px} /* 좁은 세로 화면에서도 처음으로 버튼이 안 잘리게 */
+  .screen{flex-direction:column;overflow:auto;gap:28px}
+  .screen.full{justify-content:center}
+  .hero{flex:none;max-width:none}
+  .fan{flex:1;max-height:56dvh}
+  .panel{width:100%}
+  [data-screen="review"]{overflow:hidden} /* 세로 화면에서도 사진은 가운데 크게, 도구는 엣지 패널 */
+  [data-screen="review"] .slot{height:auto;flex:1;padding-bottom:84px} /* 아래 완성하기 버튼 자리 */
+  #reviewPanel{width:min(360px,86vw)}
+  .slot{height:46dvh;flex:none}
+  [data-screen="frame"] .slot{height:34dvh}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::after{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+<header id="bar" hidden>
+  <button class="back" id="back"><i class="ph-bold ph-arrow-left"></i>이전</button>
+  <ol class="stepper" id="stepper">
+    <li data-s="format"><b>1</b><span>모양</span></li>
+    <li data-s="frame"><b>2</b><span>프레임</span></li>
+    <li data-s="shoot"><b>3</b><span>촬영</span></li>
+    <li data-s="review"><b>4</b><span>확인</span></li>
+    <li data-s="done"><b>5</b><span>완성</span></li>
+  </ol>
+  <button class="back home" id="homeTop"><i class="ph-bold ph-house"></i>처음으로</button>
+</header>
+
+<section class="screen full" data-screen="start">
+  <div class="hero">
+    <div>
+      <h1>우리의 네컷</h1>
+      <p class="sub">나가사키와 후쿠오카에서 네 장씩 남겨요.</p>
+    </div>
+    <div><button class="btn pop big" id="startBtn"><i class="ph-bold ph-camera"></i>시작하기</button></div>
+  </div>
+  <div class="fan" aria-hidden="true">
+    <canvas></canvas><canvas></canvas><canvas></canvas>
+  </div>
+</section>
+
+<section class="screen col" data-screen="format" hidden>
+  <div>
+    <h1>어떤 모양으로 찍을까요?</h1>
+    <p class="sub">사진은 네 장 찍어요.</p>
+  </div>
+  <div class="choices">
+    <button class="choice" data-fmt="strip"><div class="pv"></div><strong>세로 네컷</strong><span>2x6인치, 한 줄로 길게</span></button>
+    <button class="choice" data-fmt="square"><div class="pv"></div><strong>4×6 네컷</strong><span>4x6인치, 2x2 격자</span></button>
+  </div>
+</section>
+
+<section class="screen" data-screen="frame" hidden>
+  <div class="slot tall" data-slot></div>
+  <div class="col grow">
+    <div>
+      <h1>프레임을 골라요</h1>
+      <p class="sub" id="frameName"></p>
+    </div>
+    <div class="seg" id="frameTabs">
+      <button data-tab="theme"></button>
+      <button data-tab="color"><i class="ph-bold ph-palette"></i>색상</button>
+      <button data-tab="custom"><i class="ph-bold ph-paint-brush"></i>커스텀</button>
+    </div>
+    <div class="tiles" id="tiles"></div>
+    <div class="actions" style="justify-content:flex-end"><button class="btn primary big" id="frameNext">다음<i class="ph-bold ph-arrow-right"></i></button></div>
+  </div>
+</section>
+
+<section class="screen shoot" data-screen="shoot" hidden>
+  <div class="col grow" style="align-items:center">
+    <div class="view">
+      <video id="video" autoplay playsinline muted></video>
+      <div class="blurout"></div><!-- 틀 밖은 흐리게 -->
+      <div class="guide" id="guide"></div><!-- 실제로 찍히는 영역 -->
+      <div class="steps" id="steps" hidden><i></i><i></i><i></i><i></i></div>
+      <div class="count" id="count"></div>
+      <div class="flash" id="flash"></div>
+    </div>
+    <button class="shutter" id="shoot"><b></b>촬영 시작</button>
+    <label class="toggle autofix">자동 보정 <input type="checkbox" id="auto" checked></label>
+  </div>
+</section>
+
+<section class="screen" data-screen="review" hidden>
+  <div class="slot tall grow" data-slot></div>
+  <div class="col panel" id="reviewPanel">
+    <div>
+      <h1>잘 나왔나요?</h1>
+      <p class="sub" id="reviewHint"></p>
+    </div>
+    <div class="modes">
+      <button data-mode="text" aria-pressed="true"><i class="ph-bold ph-text-aa"></i>문구</button>
+      <button data-mode="pen" aria-pressed="false"><i class="ph-bold ph-pencil-simple"></i>펜</button>
+      <button data-mode="sticker" aria-pressed="false"><i class="ph-bold ph-smiley"></i>스티커</button>
+    </div>
+    <div class="col" id="stickerTools" hidden>
+      <div class="stickers" id="stickerList"></div>
+      <div class="actions">
+        <label class="btn"><i class="ph-bold ph-file-png"></i>PNG 불러오기<input type="file" accept="image/png,image/*" id="pngFile" multiple hidden></label>
+        <button class="btn" id="stickerDel"><i class="ph-bold ph-trash"></i>고른 스티커 지우기</button>
+      </div>
+    </div>
+    <div class="col" id="penTools" hidden>
+      <div class="field"><label>펜 색</label><div class="swatches" id="penColors"></div></div>
+      <div class="field"><label for="penSize">굵기</label><input type="range" id="penSize" min="3" max="30" value="8"></div>
+      <div class="actions">
+        <button class="btn" id="penUndo"><i class="ph-bold ph-arrow-u-up-left"></i>되돌리기</button>
+        <button class="btn quiet" id="penClear"><i class="ph-bold ph-trash"></i>모두 지우기</button>
+      </div>
+    </div>
+    <div class="col" id="textTools">
+    <div class="field">
+      <label for="caption">아래 문구</label>
+      <input id="caption" value="우리의 네컷" maxlength="14">
+    </div>
+    <div class="field">
+      <label>글자 색</label>
+      <div class="swatches" id="capColors"></div>
+    </div>
+    </div>
+    <div class="stack">
+      <button class="btn quiet" id="retakeAll"><i class="ph-bold ph-arrow-counter-clockwise"></i>네 장 모두 다시 찍기</button>
+    </div>
+  </div>
+  <!-- 갤럭시 엣지 패널처럼: 오른쪽 가장자리 손잡이를 누르거나 밀면 꾸미기 패널이 나옴 -->
+  <button class="edge" id="edgeBtn" aria-controls="reviewPanel" aria-expanded="false"><i class="ph-bold ph-caret-left"></i><span>꾸미기</span></button>
+  <button class="btn primary big fab" id="finish">완성하기<i class="ph-bold ph-arrow-right"></i></button>
+</section>
+
+<section class="screen" data-screen="done" hidden>
+  <div class="slot tall grow" data-slot></div>
+  <div class="col panel">
+    <div>
+      <h1>완성했어요</h1>
+      <p class="sub" id="doneSub">저장하거나 인쇄하고, 폰으로도 받을 수 있어요.</p>
+    </div>
+    <div class="stack">
+      <button class="btn primary big" id="save"><i class="ph-bold ph-download-simple"></i>저장</button>
+      <button class="btn" id="print"><i class="ph-bold ph-printer"></i>인쇄</button>
+      <button class="btn" id="share" hidden><i class="ph-bold ph-share-network"></i>공유 (카톡·Quick Share)</button>
+      <button class="btn" id="phone"><i class="ph-bold ph-qr-code"></i>폰으로 받기</button>
+      <button class="btn quiet" id="home"><i class="ph-bold ph-house"></i>처음으로</button>
+    </div>
+  </div>
+</section>
+
+<div class="print" id="printCard"><canvas id="strip"></canvas></div>
+<img id="printImg" alt="">
+<div class="toast" id="toast" role="status" hidden></div>
+<dialog id="qrDlg">
+  <h2>폰 카메라로 찍어요</h2>
+  <div id="qr"></div>
+  <p id="qrMsg"></p>
+  <button class="btn primary" id="qrClose">닫기</button>
+</dialog>
+<dialog id="printDlg">
+  <h2>몇 장 뽑을까요?</h2>
+  <div class="copies">
+    <button class="btn" id="cpMinus" aria-label="한 장 빼기"><i class="ph-bold ph-minus"></i></button>
+    <output id="cpN">1</output>
+    <button class="btn" id="cpPlus" aria-label="한 장 더하기"><i class="ph-bold ph-plus"></i></button>
+  </div>
+  <div class="stack">
+    <button class="btn primary big" id="cpOk"><i class="ph-bold ph-printer"></i>확인</button>
+    <button class="btn quiet" id="cpCancel">취소</button>
+  </div>
+</dialog>
+<dialog id="gptDlg">
+  <h2>GPT로 프레임 만들기</h2>
+  <p>원하는 모습을 적고 ChatGPT를 열어요. 그림이 나오면 저장한 뒤 여기로 돌아와 불러와요.</p>
+  <textarea id="gptWish" rows="3" maxlength="200" placeholder="예: 벚꽃 핀 교토 골목, 수채화 느낌"></textarea>
+  <div class="stack">
+    <button class="btn primary" id="gptOpen"><i class="ph-bold ph-sparkle"></i>ChatGPT에서 만들기</button>
+    <label class="btn"><i class="ph-bold ph-image"></i>만든 그림 불러오기<input type="file" accept="image/*" id="gptFile" hidden></label>
+    <button class="btn quiet" id="gptClose">닫기</button>
+  </div>
+</dialog>
+<script src="vendor/qrcode.min.js"></script>
+<script src="theme.js"></script>
+<script>
+// 튜닝 노브: 탭 카메라/조명에 맞게 조절
+const TARGET_LUM = 0.52;   // 목표 평균 밝기 (0~1)
+const WB_STRENGTH = 0.5;   // 화이트밸런스 보정 세기 (0=끔, 1=완전 gray-world)
+const GLOW = 0.22;         // 뽀샤시 소프트포커스 세기
+const COUNTDOWN = 3;       // 컷당 카운트다운(초)
+
+// S: 결과물 해상도 배율. PW: 찍은 원본의 긴 변 (원본은 사진 칸 비율 그대로 찍음)
+const S = 2, PW = 1440;
+// 결과물 모양. strip = 2x6인치 세로 네컷(600x1800), square = 4x6인치 세로 2x2(1200x1800) 좌표 (이름은 예전 정사각에서 그대로)
+// std/scene: 사진 칸 배치 (scene은 그림 배경용, 칸 아래 풍경 띠를 넓힘). text = [라벨, 문구, 날짜] 글자 y, ts = 글자 배율
+const FORMATS = {
+  strip: {w: 600, h: 1800, ts: 1,
+    std:   {cols: 1, x: 30, top: 30, w: 540, h: 360, gap: 30, text: [1600, 1652, 1700]},
+    scene: {cols: 1, x: 36, top: 36, w: 528, h: 352, gap: 14, text: [1622, 1676, 1720]},
+    // poster: 포스터 그림 프레임. n = 컷 수(없으면 4), logo = 제목 그림 자리 {x 가운데, y 위, w 폭}, date = 날짜 [x, y]
+    banner: {cols: 1, n: 3, x: 36, top: 250, w: 528, h: 352, gap: 14, text: [1622, 1676, 1720], logo: {x: 300, y: 1345, w: 420}, date: [300, 1776], head: {x: 300, y: 50, w: 500}},
+    poster: {cols: 1, n: 3, x: 36, top: 36, w: 528, h: 352, gap: 14, text: [1622, 1676, 1720], logo: {x: 300, y: 1140, w: 470}, date: [300, 1762]}},
+  square: {w: 1200, h: 1800, ts: 1.45,
+    std:   {cols: 2, x: 40, top: 40, w: 550, h: 700, gap: 20, text: [1560, 1636, 1690]},
+    scene: {cols: 2, x: 40, top: 40, w: 550, h: 700, gap: 20, text: [1560, 1636, 1690]},
+    banner: {cols: 2, x: 120, top: 30, w: 470, h: 598, gap: 20, text: [1560, 1636, 1690], logo: {x: 600, y: 1380, w: 1060}, date: [600, 1780], head: {x: 600, y: 1290, w: 360}},
+    poster: {cols: 2, x: 40, top: 40, w: 550, h: 700, gap: 20, text: [1560, 1636, 1690], logo: {x: 300, y: 1485, w: 500}, date: [300, 1760]}},
+};
+for (const [k, F] of Object.entries(FORMATS)) F.key = k;
+const cutCount = () => F[FRAMES[frame].layout || 'std'].n || 4; // 지금 프레임의 컷 수 (보통 4, 세로 네컷 poster는 3)
+const slot = (L, i) => [L.x + (i % L.cols)*(L.w + L.gap), L.top + Math.floor(i / L.cols)*(L.h + L.gap), L.w, L.h];
+console.assert(slot(FORMATS.square.std, 3).join() === '610,760,550,700' && slot(FORMATS.strip.std, 2).join() === '30,810,540,360', 'slot');
+
+// 프레임 draw(c, F): F 좌표계(F.w x F.h)에 배경을 그림. label: 문구 위 작은 글씨, shadow: 글자 그림자 색
+const plain = (bg, ink) => ({ink, draw: (c, F) => { c.fillStyle = bg; c.fillRect(0, 0, F.w, F.h); }});
+const cover = (c, img, w, h) => {
+  const k = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  c.drawImage(img, (w - img.naturalWidth*k)/2, (h - img.naturalHeight*k)/2, img.naturalWidth*k, img.naturalHeight*k);
+};
+// 프레임 미리보기용 예시 사진 samples/sample1~4.jpg (같은 세 사람, 네 가지 포즈. art/samples 원본을 줄인 것)
+const SAMPLES = [1, 2, 3, 4].map(n => { const im = new Image(); im.onload = () => refresh(); im.src = `samples/sample${n}.jpg`; return im; });
+// 그림 배경 frames/<name>.jpg(세로). 두 모양 다 세로라 하늘은 전체에 깔고, 아래 풍경은 폭 맞춤으로 바닥에 붙여서 사진 아래로 보이게
+const logoImg = name => { const i = new Image(); i.onload = () => refresh(); i.src = `frames/${name}`; return i; };
+function sceneFrame(name, ink, shadow, label) {
+  const imgs = {strip: new Image(), square: new Image()};
+  imgs.strip.src = `frames/${name}.jpg`; imgs.square.src = `frames/${name}-4x6.jpg`; // 4x6은 2x2 사진 아래 띠에 풍경이 오게 그린 전용 그림
+  for (const i of Object.values(imgs)) i.onload = () => refresh();
+  return sceneOf(imgs, ink, shadow, label);
+}
+function sceneOf(imgs, ink, shadow, label) {
+  return {ink, shadow, label, layout: 'scene', draw: (c, F) => {
+    const img = imgs[F.key];
+    if (!img.naturalWidth) { c.fillStyle = '#888'; c.fillRect(0, 0, F.w, F.h); return; }
+    cover(c, img, F.w, F.h);
+    const h = img.naturalHeight * F.w / img.naturalWidth; c.drawImage(img, 0, F.h - h, F.w, h);
+  }};
+}
+// 앱 종류별 설정. theme.js가 window.THEME을 정함 (안드로이드 교회 앱은 church 폴더의 theme.js로 바뀜). 웹은 ?theme=church
+const CHURCH = 'VISION CHURCH', STARTUP = '부산창업학교', BUFS = 'BUFS · 2026 전공설명회';
+// 커스텀 탭 기본 프레임 (교회·창업 앱 공통)
+const customFrames = () => ({
+  '명탐정 코난': {...sceneFrame('conan-bg', '#FFFFFF', 'rgba(10,20,60,.8)'), group: 'custom', layout: 'banner', logo: logoImg('conan-banner.png'), logoBy: {strip: logoImg('conan-kid.png')}, top: logoImg('conan-logo.png')},
+  '치이카와':    {...sceneFrame('chiikawa-cave', '#FFFFFF', 'rgba(10,30,80,.8)'), group: 'custom', layout: 'poster', logo: logoImg('chiikawa-logo.png')},
+});
+const THEMES = {
+  church: {
+    tab: '교회', icon: 'church', // tab·icon: 프레임 고르기 첫 탭 이름·아이콘
+    title: '비전교회 네컷', sub: '함께 웃는 오늘을 네 장에 남겨요.',
+    fan: ['부활의 아침', '눈 오는 성탄', '수련회 바다'], // 시작 화면 부채꼴 = 프레임 이름
+    frames: () => ({
+      '주일 아침':      sceneFrame('church-morning', '#FFFFFF', 'rgba(30,60,110,.75)', CHURCH),
+      '스테인드글라스': sceneFrame('church-glass', '#FFF3D6', 'rgba(0,0,0,.75)', CHURCH),
+      '성탄의 밤':      sceneFrame('christmas-night', '#FFE3A3', 'rgba(0,0,0,.7)', CHURCH),
+      '눈 오는 성탄':   sceneFrame('christmas-snow', '#FFFFFF', 'rgba(60,20,30,.75)', CHURCH),
+      '부활의 아침':    sceneFrame('easter-sunrise', '#FFFFFF', 'rgba(120,60,20,.7)', CHURCH),
+      '봄꽃 부활절':    sceneFrame('easter-spring', '#FFFFFF', 'rgba(60,90,60,.75)', CHURCH),
+      '수련회 바다':    sceneFrame('retreat-beach', '#FFFFFF', 'rgba(60,20,40,.7)', CHURCH),
+      '여름성경학교':   sceneFrame('vbs-summer', '#FFFFFF', 'rgba(20,50,110,.75)', CHURCH),
+      ...customFrames(),
+    }),
+    stickers: {'angel-wings': 300, 'halo': 220, 'lamb-ears': 260, 'santa-hat': 230, 'reindeer': 260, 'dove': 150, 'heart-cross': 120, 'church-stamp': 170},
+  },
+  startup: {
+    tab: '창업', icon: 'rocket-launch',
+    title: '부산창업학교 네컷', sub: '우리의 시작을 네 장에 남겨요.',
+    fan: ['로켓 발사', '광안대교의 밤', '데모데이'],
+    frames: () => ({
+      '로켓 발사':     sceneFrame('startup-rocket', '#FFFFFF', 'rgba(0,0,0,.75)', STARTUP),
+      '아이디어':      sceneFrame('startup-idea', '#FFFFFF', 'rgba(0,0,0,.75)', STARTUP),
+      '피칭 무대':     sceneFrame('startup-pitch', '#FFFFFF', 'rgba(0,0,0,.75)', STARTUP),
+      '데모데이':      sceneFrame('startup-demoday', '#FFFFFF', 'rgba(0,0,0,.75)', STARTUP),
+      '성장 그래프':   sceneFrame('startup-growth', '#FFFFFF', 'rgba(0,0,0,.75)', STARTUP),
+      '광안대교의 밤': sceneFrame('startup-busan-night', '#FFFFFF', 'rgba(0,0,0,.75)', STARTUP),
+      ...customFrames(),
+    }),
+    stickers: {},
+  },
+  bufs: { // 부산외국어대학교 2026-2학기 전공설명회 (10/27~28) 글로벌창업융합전공 부스
+    formats: ['square'], // 4x6만 (세로 네컷 없음)
+    oneTab: true, // 탭 없이 그림·색상 프레임을 한 화면에 (커스텀 없음)
+    tab: '부외대', icon: 'graduation-cap',
+    title: '글로벌창업 네컷', sub: '아이디어를 비즈니스로! 오늘을 네 장에 남겨요.',
+    fan: ['가을 캠퍼스', '글로벌 창업', '세계로 출발'],
+    frames: () => ({
+      // 프레임별 글씨 색(ink)과 테두리 색(outline)을 그림 색에 맞춤
+      '가을 캠퍼스':          {...sceneFrame('bufs-autumn', '#FFD54F', 'rgba(90,42,10,.6)', BUFS), outline: '#5A2A0A'},
+      '글로벌 창업':          {...sceneFrame('bufs-global', '#FFFFFF', 'rgba(11,85,99,.6)', BUFS), outline: '#0B5563'},
+      '아이디어를 비즈니스로': {...sceneFrame('bufs-idea', '#FFE066', 'rgba(13,74,74,.6)', BUFS), outline: '#0D4A4A'},
+      '세계로 출발':          {...sceneFrame('bufs-travel', '#FFE6C7', 'rgba(59,30,79,.6)', BUFS), outline: '#3B1E4F'},
+      '안녕, 부산':           {...sceneFrame('bufs-busan', '#FFFFFF', 'rgba(11,61,120,.6)', BUFS), outline: '#0B3D78'}, // 감천문화마을·부산타워·해운대
+      '드림 커리어':          {...sceneFrame('bufs-future', '#FFFFFF', 'rgba(29,95,168,.6)', BUFS), outline: '#1D5FA8'}, // 직업 일터 풍경 + 직업 스티커로 꿈의 직업 모습
+    }),
+    stickers: {'job-grad-cap': 260, 'job-chef-hat': 240, 'job-pilot-cap': 280, 'job-fire-helmet': 280, 'job-beret': 260, 'job-stethoscope': 260}, // 직업 스티커 (드림 커리어)
+  },
+};
+const T = THEMES[new URLSearchParams(location.search).get('theme') || window.THEME] || THEMES.church;
+const ONE_FMT = T.formats?.length === 1 ? T.formats[0] : null; // 모양이 하나뿐인 앱은 모양 고르기 단계를 건너뜀
+document.documentElement.dataset.theme = Object.keys(THEMES).find(k => THEMES[k] === T); // CSS에서 테마별 배경
+const FRAMES = {
+  ...T.frames(),
+  '화이트': plain('#FFFFFF', '#141518'), '블랙': plain('#141518', '#F4F4F5'),
+  '핑크': plain('#FFD6E4', '#7A1238'), '블루': plain('#D7E3FF', '#1B2F6B'),
+};
+// 프레임 고르기 탭: theme(교회/창업 그림), color(단색), custom(내 사진·GPT·관리자가 꾸며 저장한 것)
+for (const f of Object.values(FRAMES)) f.group ??= f.layout === 'scene' || T.oneTab ? 'theme' : 'color';
+if (T.oneTab) document.getElementById('frameTabs').hidden = true;
+// title: 그 프레임의 기본 아래 문구 (없으면 앱 제목). 손님이 문구를 안 바꿨으면 프레임을 바꿀 때 같이 바뀜
+
+const FONT = '"Pretendard Variable", Pretendard, sans-serif';
+const $ = id => document.getElementById(id);
+const video = $('video'), strip = $('strip'), count = $('count'), card = $('printCard');
+const zoom = {s: 1, x: 0, y: 0}; // 꾸미기 화면에서 두 손가락으로 확대·축소·이동 (보기만 바뀜, 결과물은 그대로)
+const applyZoom = () => card.style.transform = zoom.s === 1 && !zoom.x && !zoom.y ? '' : `translate(${zoom.x}px,${zoom.y}px) scale(${zoom.s})`;
+let camReady = Promise.resolve(), photos = [], frame = Object.keys(FRAMES)[0], F = FORMATS.strip, busy = false, screen = 'start';
+let editing = null; // 관리자가 프레임을 꾸미는 중이면 {base: 바탕 프레임 이름}. 확인 화면을 꾸미기 판으로 씀
+let frameTab = 'theme';
+
+// ---------- 화면 이동 ----------
+const ORDER = ['start', 'format', 'frame', 'shoot', 'review', 'done'];
+function go(name) {
+  if (name !== 'review') editing = null;
+  if (name === 'frame') frameTab = FRAMES[frame].group;
+  screen = name; document.body.dataset.at = name; // CSS에서 화면별 스타일 (data-screen은 화면 section용이라 다른 이름)
+  Object.assign(zoom, {s: 1, x: 0, y: 0}); applyZoom(); // 화면 바뀌면 확대 원래대로
+  if (name === 'start') { // 처음 화면으로 오면(처음으로·이전 어느 쪽이든) 앞사람 사진·꾸미기·문구 모두 지움
+    photos = []; strokes = []; stickers = [];
+    Object.assign(cap, {size: 40, x: null, y: null, color: null});
+    pen.mode = 'text'; // 앞사람이 펜·스티커 모드로 끝내면 컷별 "다시" 버튼이 숨은 채로 남으므로 기본 모드로
+    $('caption').value = FRAMES[frame].title || T.title;
+    setPanel(false);
+  }
+  const el = document.querySelector(`[data-screen="${name}"]`);
+  document.querySelectorAll('[data-screen]').forEach(s => s.hidden = s !== el);
+  const sl = el.querySelector('[data-slot]');              // 결과 미리보기는 한 개를 화면마다 옮겨 씀
+  card.hidden = !sl; if (sl) sl.append(card);
+  card.classList.toggle('ready', name === 'review' && !editing); // 컷별 "다시" 버튼은 확인 화면에서만 (프레임 꾸밀 땐 없음)
+  $('retakeAll').hidden = !!editing;
+  document.querySelector('#reviewPanel h1').textContent = editing ? '프레임을 꾸며요' : '잘 나왔나요?';
+  $('finish').innerHTML = editing ? '<i class="ph-bold ph-floppy-disk"></i>프레임 저장' : '완성하기<i class="ph-bold ph-arrow-right"></i>';
+  $('bar').hidden = name === 'start';
+  const idx = ORDER.indexOf(name);
+  document.querySelectorAll('#stepper li').forEach(li => {
+    const i = ORDER.indexOf(li.dataset.s);
+    li.className = i < idx ? 'done' : i === idx ? 'now' : '';
+  });
+  $('back').hidden = $('homeTop').hidden = busy; // 찍는 중에는 숨김
+  if (name === 'format') drawChoices();
+  if (name === 'frame') drawTiles();
+  if (name === 'review') { drawColors(); setMode(pen.mode); }
+  if (name === 'shoot') { $('shoot').hidden = false; camReady = startCamera(); } else stopCamera();
+  renderStrip();
+}
+const BACK = {format: 'start', frame: ONE_FMT ? 'start' : 'format', shoot: 'frame', review: 'frame', done: 'review'};
+$('back').onclick = () => !busy && go(BACK[screen]);
+$('homeTop').onclick = () => !busy && go('start');
+// 관리자 전용: 촬영 화면에서 위쪽 "4" 단계를 1.5초 꾹 누르면 예시 사진으로 채워 확인 화면으로 (카메라 없이 꾸미기·인쇄 점검용)
+{
+  const four = document.querySelector('#stepper li[data-s="review"]');
+  let timer = 0;
+  four.addEventListener('pointerdown', () => {
+    if (screen !== 'shoot' || busy) return;
+    timer = setTimeout(() => {
+      photos = SAMPLES.map(im => { const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight; c.getContext('2d').drawImage(im, 0, 0); return c; });
+      go('review'); toast('관리자 확인: 예시 사진으로 채웠어요');
+    }, 1500);
+  });
+  for (const t of ['pointerup', 'pointerleave', 'pointercancel']) four.addEventListener(t, () => clearTimeout(timer));
+}
+
+$('startBtn').onclick = () => {
+  if (!Native) { // 앱은 MainActivity가 전체 화면·화면 꺼짐 방지를 함
+    document.documentElement.requestFullscreen?.().catch(() => {});
+    navigator.wakeLock?.request('screen').catch(() => {});
+  }
+  go(ONE_FMT ? 'frame' : 'format');
+};
+
+// ---------- 그리기 ----------
+// 결과물 전체를 canvas 크기에 맞춰 그림 (메인 미리보기, 모양/프레임 고르기 썸네일 공용)
+function render(canvas, f = FRAMES[frame], Fm = F) {
+  const ctx = canvas.getContext('2d'), s = canvas.width / Fm.w;
+  ctx.save(); ctx.scale(s, s); f.draw(ctx, Fm); ctx.restore();
+  const L = Fm[f.layout || 'std'], t = Fm.ts*s, cx = canvas.width/2;
+  for (let i = 0; i < (L.n || 4); i++) {
+    const [x, y, w, h] = slot(L, i).map(v => v*s);
+    ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, w, h, 6*s); ctx.clip();
+    // 모양·프레임 고르는 화면에서는 빈 칸에 예시 사진을 넣어 보여 줌 (시작 화면 카드는 빈 칸 그대로)
+    const p = photos[i] || ((screen === 'format' || screen === 'frame') && SAMPLES[i].naturalWidth && SAMPLES[i]);
+    if (p) { // 칸 비율에 맞춰 가운데 자르기
+      const sw = Math.min(p.width, p.height * w / h), sh = sw * h / w;
+      ctx.drawImage(p, (p.width - sw)/2, (p.height - sh)/2, sw, sh, x, y, w, h);
+    }
+    else { ctx.fillStyle = 'rgba(160,160,165,.55)'; ctx.fillRect(x, y, w, h); }
+    ctx.restore();
+  }
+  const d = new Date();
+  let [labelY, capY, dateY] = L.text.map(v => v*s);
+  // 문구를 끌어 옮겼으면 위 라벨·날짜도 같은 만큼 따라감
+  let x = cap.x == null ? cx : cap.x/100 * Fm.w*s; const dy = cap.y == null ? 0 : cap.y/100 * Fm.h*s - capY;
+  labelY += dy; capY += dy; dateY += dy;
+  ctx.save();
+  ctx.fillStyle = cap.color || f.ink; ctx.textAlign = 'center'; // 글자색은 라벨·문구·날짜 모두 같이
+  if (f.shadow) { ctx.shadowColor = f.shadow; ctx.shadowBlur = 12*t; }
+  // 글자 테두리: 밝은 글자엔 검정, 어두운 글자엔 흰색 (그림 위에서도 잘 보이게). w = 테두리 두께 (F 좌표)
+  const hex = (cap.color || f.ink).replace('#', ''), lum = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16)).reduce((a, v, i) => a + v * [.299, .587, .114][i], 0);
+  ctx.strokeStyle = (!cap.color && f.outline) || (lum > 140 ? 'rgba(0,0,0,.85)' : 'rgba(255,255,255,.92)'); ctx.lineJoin = 'round'; // 프레임이 정한 테두리 색 우선
+  const outlined = (str, tx, ty, w) => { ctx.lineWidth = w*s; ctx.strokeText(str, tx, ty); ctx.fillText(str, tx, ty); };
+  const lg = f.logoBy?.[Fm.key] || f.logo; // 모양별로 다른 그림이 있으면 그것 (logoBy = {strip: 그림})
+  const logo = lg && L.logo; // 그림 제목(로고) 프레임: 라벨·문구·부제목 대신 로고 그림, 날짜는 정한 자리에
+  if (logo && lg.naturalWidth) {
+    const {x: lx, y: ly, w: lw} = L.logo;
+    ctx.drawImage(lg, (lx - lw/2)*s, ly*s, lw*s, lw*s * lg.naturalHeight / lg.naturalWidth);
+  }
+  if (f.top && L.head && f.top.naturalWidth) { // 위쪽 제목 로고 (L.head = {x 가운데, y 위, w 폭})
+    const {x: tx, y: ty, w: tw} = L.head;
+    ctx.save(); ctx.shadowColor = 'transparent';
+    ctx.drawImage(f.top, (tx - tw/2)*s, ty*s, tw*s, tw*s * f.top.naturalHeight / f.top.naturalWidth); ctx.restore();
+  }
+  if (logo && L.date) { x = L.date[0]*s; dateY = L.date[1]*s; }
+  if (f.label && !logo) {
+    ctx.font = `700 ${13*t}px ${FONT}`; ctx.letterSpacing = `${3*t}px`; ctx.globalAlpha = .9;
+    outlined(f.label, x, labelY, 3*Fm.ts); ctx.globalAlpha = 1;
+  }
+  const text = logo ? '' : $('caption').value;
+  let size = cap.size; ctx.letterSpacing = `${-1*t}px`;
+  do ctx.font = `800 ${size*t}px ${FONT}`; // 긴 문구는 폭에 맞춰 줄임
+  while (ctx.measureText(text).width > (Fm.w - 60)*s && (size -= 2) > 12);
+  outlined(text, x, capY, size * Fm.ts * .16);
+  if (f.sub && !logo) { // 부제목 (문구 아래, 날짜는 그 아래로)
+    ctx.font = `800 ${24*t}px ${FONT}`; ctx.letterSpacing = `${1*t}px`;
+    outlined(f.sub, x, dateY, 4*Fm.ts); dateY += 36*t;
+  }
+  ctx.font = `700 ${22*t}px ${FONT}`; ctx.letterSpacing = `${2*t}px`; // 날짜 (예전 15에서 키움) ctx.globalAlpha = .85;
+  const ds = `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
+  if (!logo || L.date) outlined(ds, x, dateY, 4.5*Fm.ts);
+  ctx.restore();
+  if (Fm !== F) return; // 펜 그림은 지금 모양 좌표라 다른 모양 썸네일엔 안 그림
+  ctx.save(); ctx.scale(s, s); drawDeco(ctx);
+  const sel = screen === 'review' && pen.mode === 'sticker' && pen.picked && stickers.at(-1); // 고른 스티커 = 맨 뒤 (맨 위에 그려짐)
+  if (sel) {
+    ctx.setLineDash([8, 6]); ctx.lineWidth = 3; ctx.strokeStyle = '#FF3D7F';
+    ctx.beginPath(); ctx.arc(sel.x, sel.y, sel.size * .62, 0, Math.PI*2); ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawDeco(ctx) { // 펜 그림·스티커 (ctx는 F 좌표)
+  ctx.save(); ctx.lineCap = ctx.lineJoin = 'round';
+  for (const k of strokes) {
+    ctx.strokeStyle = k.color; ctx.lineWidth = k.w; ctx.beginPath();
+    k.pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+    if (k.pts.length === 1) ctx.lineTo(k.pts[0][0] + .1, k.pts[0][1]); // 콕 찍은 점
+    ctx.stroke();
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const k of stickers) {
+    const im = STICKER_IMG[k.e]?.img;
+    if (im) { const h = k.size * im.naturalHeight / (im.naturalWidth || 1); ctx.drawImage(im, k.x - k.size/2, k.y - h/2, k.size, h); }
+    else { ctx.font = `${k.size}px sans-serif`; ctx.fillText(k.e, k.x, k.y); }
+  }
+  ctx.restore();
+}
+const renderStrip = () => render(strip);
+const thumbCanvas = (f, Fm, w) => { const c = document.createElement('canvas'); c.width = w; c.height = w * Fm.h / Fm.w; render(c, f, Fm); return c; };
+// 시작 화면 부채꼴: 캔버스는 그대로 두고 다시 그리기만 (새로 만들면 등장 애니메이션이 다시 돎)
+const drawFan = () => document.querySelectorAll('.fan canvas').forEach((c, i) => {
+  const Fm = FORMATS[ONE_FMT || 'strip']; c.width = 240 * Fm.w / 600; c.height = 720; render(c, FRAMES[T.fan[i]], Fm);
+});
+// 시작 화면에 있는 동안 30초마다: 카드가 가운데로 모이며 부드럽게 사라졌다가, 잠깐 뒤 처음(deal)처럼 다시 펼쳐짐. 제목·버튼은 그대로
+const FAN_REPLAY_MS = 30000;
+setInterval(() => {
+  if (screen !== 'start' || document.hidden || matchMedia('(prefers-reduced-motion:reduce)').matches) return;
+  document.querySelectorAll('.fan canvas').forEach(c => {
+    const deal = c.getAnimations().find(a => a.animationName === 'deal');
+    // 사라질 때 끝 모양 = deal 시작 모양이라 이어 붙여도 튀지 않음
+    const out = c.animate([{opacity: 1, transform: getComputedStyle(c).transform},
+      {opacity: 0, transform: 'translate(-50%,-40%) rotate(0deg) scale(.85)'}], {duration: 700, easing: 'ease-in', fill: 'forwards'});
+    out.finished.then(() => setTimeout(() => { deal.currentTime = 0; deal.play(); out.cancel(); }, 400));
+  });
+}, FAN_REPLAY_MS);
+function refresh() {
+  renderStrip();
+  if (screen === 'start') drawFan();
+  if (screen === 'frame') drawTiles();
+  if (screen === 'format') drawChoices();
+}
+// Pretendard는 글자별로 받아오는 폰트라 문구 글자를 먼저 불러온 뒤 그림
+const drawWithFont = () => document.fonts.load(`800 20px ${FONT}`, $('caption').value + '0123456789.').then(renderStrip, renderStrip);
+$('caption').oninput = drawWithFont;
+
+// 문구 스타일: x/y는 결과물 폭/높이의 %, null이면 프레임 기본 위치. color null이면 프레임 기본 글자색
+const cap = {size: 40, x: null, y: null, color: null};
+let strokes = []; // 펜 그림 [{color, w, pts: [[x, y], ...]}], F 좌표
+let stickers = []; // 스티커 [{e, x, y, size}], F 좌표. 맨 뒤가 지금 고른 것
+const STICKER_IMG = Object.fromEntries(Object.entries({
+  ...T.stickers, 'bunny-ears': 260, 'cat-ears': 240, 'puppy-ears': 260, 'heart-glasses': 200, 'cat-whiskers': 200, 'blush': 80,
+}).map(([name, size]) => { const img = new Image(); img.src = `stickers/${name}.webp`; img.onload = () => refresh(); return [name, {img, size}]; }));
+const STICKERS = [...Object.keys(STICKER_IMG), '😎', '👑', '🐰', '🐱', '🐶', '🦊', '❤️', '💕', '⭐', '✨', '🌸', '🎀', '💋', '😘', '🥰', '🤪', '🎉', '🍓', '🍰', '🌈'];
+const CAP_COLORS = ['#FFFFFF', '#141518', '#FF3D7F', '#E0303A', '#FFD23F', '#2F6FDE', '#2E9E5B', '#8A5CF6'];
+const pen = {color: '#FF3D7F', mode: 'text', sticker: STICKERS[0], picked: false}; // picked: 맨 뒤 스티커를 고른 상태 (핀치 = 그 스티커 크기)
+function swatches(box, list, now, pick) {
+  box.replaceChildren(...list.map(c => {
+    const b = document.createElement('button');
+    if (c) { b.style.background = c; b.setAttribute('aria-label', c); } else { b.className = 'auto'; b.textContent = '프레임 색'; }
+    b.setAttribute('aria-pressed', now === c);
+    b.onclick = () => { pick(c); drawColors(); renderStrip(); };
+    return b;
+  }));
+}
+function drawColors() {
+  swatches($('capColors'), [null, ...CAP_COLORS], cap.color, c => cap.color = c);
+  swatches($('penColors'), CAP_COLORS, pen.color, c => pen.color = c);
+  $('stickerList').replaceChildren(...STICKERS.map(e => {
+    const b = document.createElement('button');
+    if (STICKER_IMG[e]) { const im = STICKER_IMG[e].img.cloneNode(); im.alt = e; b.append(im); } else b.textContent = e;
+    b.setAttribute('aria-pressed', pen.sticker === e);
+    b.onclick = () => {
+      pen.sticker = e; pen.picked = true;
+      stickers.push({e, x: F.w / 2, y: F.h * .4, size: STICKER_IMG[e]?.size ?? 120});
+      drawColors(); setPanel(false); renderStrip();
+    };
+    return b;
+  }));
+}
+function setMode(m) {
+  pen.mode = m; pen.picked = false;
+  document.querySelectorAll('.modes button').forEach(b => b.setAttribute('aria-pressed', b.dataset.mode === m));
+  $('penTools').hidden = m !== 'pen'; $('textTools').hidden = m !== 'text'; $('stickerTools').hidden = m !== 'sticker';
+  card.classList.toggle('pen', m !== 'text');
+  $('reviewHint').textContent = {
+    text: '미리보기에서 문구를 끌어서 옮겨요. 다시 찍을 컷은 "다시"를 눌러요.',
+    pen: '미리보기 위에 펜이나 손가락으로 그려요.',
+    sticker: '스티커를 누르면 사진 가운데에 붙어요. 고른 스티커는 끌어서 옮기고, 두 손가락으로 크게·작게 해요. 빈 곳을 누르면 고르기가 풀려요.',
+  }[m] + (m === 'sticker' ? '' : ' 두 손가락으로 벌리거나 오므리면 크게·작게 볼 수 있어요.')
+    + (editing ? ' [프레임 꾸미기] 회색 칸은 사진 자리라 가려져요. 다 꾸몄으면 "프레임 저장"을 눌러요.' : '');
+  renderStrip();
+}
+// 내 PNG 그림을 스티커처럼 붙임 (투명 배경 PNG 추천). 프레임과 비율이 거의 같으면 프레임 전체를 덮게 놓음
+$('pngFile').onchange = async e => {
+  for (const file of e.target.files) {
+    const img = new Image(); img.src = URL.createObjectURL(file); await img.decode();
+    const key = `png:${file.name}:${Date.now()}`, a = img.naturalWidth / img.naturalHeight, full = Math.abs(a / (F.w / F.h) - 1) < .05;
+    STICKER_IMG[key] = {img, size: F.w * .5};
+    stickers.push(full ? {e: key, x: F.w / 2, y: F.h / 2, size: F.w} : {e: key, x: F.w / 2, y: F.h * .85, size: F.w * .5});
+  }
+  e.target.value = ''; pen.picked = true; setPanel(false); renderStrip();
+};
+$('stickerDel').onclick = () => { if (pen.picked) stickers.pop(); pen.picked = false; renderStrip(); };
+document.querySelectorAll('.modes button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+$('penUndo').onclick = () => { strokes.pop(); renderStrip(); };
+$('penClear').onclick = () => { strokes = []; renderStrip(); };
+
+// 확인 화면 미리보기 위 드래그: 문구 모드면 문구 이동, 펜 모드면 그리기
+// S펜을 한 번 쓰면 손 터치로는 안 그려짐 (손바닥 대고 그려도 됨)
+{
+  let penSeen = false, drag = null, frameReq = 0;
+  const redraw = () => frameReq ||= requestAnimationFrame(() => { frameReq = 0; renderStrip(); });
+  const at = e => { const r = card.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * F.w, (e.clientY - r.top) / r.height * F.h]; };
+  let grab = [0, 0]; // 스티커를 잡은 지점과 중심의 차이
+  // 두 손가락 핀치: 손가락이 두 개가 되면 꾸미기(그리기·옮기기)를 멈추고 확대·축소·이동만 함
+  const fingers = new Map(); let pinch = null, dragStart = 0;
+  const capture = id => { try { card.setPointerCapture(id); } catch {} };
+  const pinchState = () => { const [a, b] = [...fingers.values()]; return {d: Math.hypot(a[0]-b[0], a[1]-b[1]), m: [(a[0]+b[0])/2, (a[1]+b[1])/2]}; };
+  const pinchMove = e => {
+    if (!fingers.has(e.pointerId)) return false;
+    fingers.set(e.pointerId, [e.clientX, e.clientY]);
+    if (!pinch) return false;
+    const {d, m} = pinchState();
+    if (pinch.k) { // 고른 스티커: 손가락 벌린 만큼 크기, 가운데 점 따라 이동
+      const r = card.getBoundingClientRect(), u = F.w / r.width;
+      Object.assign(pinch.k, {size: Math.min(700, Math.max(30, pinch.size * d / pinch.d)), x: pinch.kx + (m[0] - pinch.m[0]) * u, y: pinch.ky + (m[1] - pinch.m[1]) * u});
+      redraw(); return true;
+    }
+    zoom.s = Math.min(4, Math.max(.6, pinch.s * d / pinch.d));
+    zoom.x = pinch.x + m[0] - pinch.m[0]; zoom.y = pinch.y + m[1] - pinch.m[1];
+    applyZoom(); return true;
+  };
+  const pinchEnd = e => {
+    fingers.delete(e.pointerId);
+    if (pinch?.k && fingers.size < 2) { pinch = null; return; }
+    if (pinch && fingers.size < 2) { pinch = null; if (Math.abs(zoom.s - 1) < .08) { Object.assign(zoom, {s: 1, x: 0, y: 0}); applyZoom(); } } // 거의 원래 크기면 딱 맞춤
+  };
+  const move = e => {
+    if (pinchMove(e)) return;
+    if (e.pointerId !== drag) return;
+    const [x, y] = at(e);
+    if (pen.mode === 'sticker') Object.assign(stickers.at(-1), {x: x + grab[0], y: y + grab[1]});
+    else if (pen.mode === 'pen') strokes.at(-1).pts.push([x, y]);
+    else { cap.x = x / F.w * 100; cap.y = (y + cap.size * F.ts * .35) / F.h * 100; } // 손끝이 글자 가운데 오게
+    redraw();
+  };
+  card.addEventListener('pointerdown', e => {
+    if (screen !== 'review' || busy || e.target.closest('.cut')) return;
+    if (e.pointerType === 'touch') {
+      fingers.set(e.pointerId, [e.clientX, e.clientY]); capture(e.pointerId);
+      if (fingers.size === 2) { // 두 번째 손가락: 첫 손가락이 방금 시작한 선은 취소하고 핀치 시작 (스티커를 골랐으면 스티커 크기, 아니면 화면 확대)
+        if (drag != null && performance.now() - dragStart < 400 && pen.mode === 'pen') strokes.pop();
+        const k = pen.mode === 'sticker' && pen.picked && stickers.at(-1);
+        drag = null; pinch = {...pinchState(), s: zoom.s, x: zoom.x, y: zoom.y, k, size: k?.size, kx: k?.x, ky: k?.y}; redraw(); return;
+      }
+      if (fingers.size > 2) return;
+    }
+    if (e.pointerType === 'pen') penSeen = true;
+    if (e.pointerType === 'touch' && penSeen && pen.mode === 'pen') return;
+    if (pen.mode === 'sticker') { // 누른 곳에 스티커가 있으면 그걸 고르고(맨 위로) 끌기, 빈 곳이면 고르기 풀기
+      const [x, y] = at(e), i = stickers.findLastIndex(k => Math.hypot(k.x - x, k.y - y) < k.size * .6);
+      pen.picked = i >= 0; redraw();
+      if (i < 0) return;
+      stickers.push(...stickers.splice(i, 1));
+      const k = stickers.at(-1); grab = [k.x - x, k.y - y];
+    }
+    capture(e.pointerId); drag = e.pointerId; dragStart = performance.now();
+    if (pen.mode === 'pen') strokes.push({color: pen.color, w: +$('penSize').value, pts: []});
+    move(e);
+  });
+  card.addEventListener('pointermove', move);
+  card.addEventListener('pointerup', e => { pinchEnd(e); if (e.pointerId === drag) drag = null; });
+  card.addEventListener('pointercancel', e => { pinchEnd(e); if (e.pointerId === drag) drag = null; });
+}
+
+// ---------- 1. 모양 ----------
+function drawChoices() {
+  for (const b of document.querySelectorAll('.choice')) {
+    const Fm = FORMATS[b.dataset.fmt];
+    b.querySelector('.pv').replaceChildren(thumbCanvas(FRAMES[frame], Fm, Fm.key === 'strip' ? 150 : 300));
+    b.setAttribute('aria-pressed', Fm === F);
+  }
+}
+const slotAspect = () => { const L = F[FRAMES[frame].layout || 'std']; return L.w / L.h; };
+function setFormat(key) {
+  const lay = key + (FRAMES[frame].layout || 'std');
+  if (lay !== setFormat.lay) { strokes = []; stickers = []; setFormat.lay = lay; }
+  if (setFormat.fr !== frame) { // 프레임이 바뀌면 기본 문구도 (손님이 고친 문구는 그대로)
+    const was = FRAMES[setFormat.fr];
+    if (!was || $('caption').value === (was.title || T.title)) $('caption').value = FRAMES[frame].title || T.title;
+    setFormat.fr = frame;
+  }
+  F = FORMATS[key]; strip.width = F.w*S; strip.height = F.h*S;
+  document.querySelector('.view').style.setProperty('--a', slotAspect()); // 카메라 화면도 사진 칸 비율로
+  card.classList.toggle('square', key === 'square');
+  const L = F[FRAMES[frame].layout || 'std'];
+  document.querySelectorAll('.cut').forEach((b, i) => {
+    b.hidden = i >= (L.n || 4);
+    const [x, y, w, h] = slot(L, i);
+    Object.assign(b.style, {left: `${x/F.w*100}%`, width: `${w/F.w*100}%`, top: `${y/F.h*100}%`, height: `${h/F.h*100}%`});
+  });
+  renderStrip();
+}
+document.querySelectorAll('.choice').forEach(b => b.onclick = () => { setFormat(b.dataset.fmt); go('frame'); });
+
+// ---------- 2. 프레임 ----------
+const ADDS = []; // 커스텀 탭 끝에 붙는 "만들기" 타일들
+$('frameTabs').querySelector('[data-tab="theme"]').innerHTML = `<i class="ph-bold ph-${T.icon}"></i>${T.tab}`;
+$('frameTabs').querySelectorAll('button').forEach(b => b.onclick = () => { frameTab = b.dataset.tab; drawTiles(); });
+function drawTiles() {
+  $('frameTabs').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.tab === frameTab));
+  const list = Object.entries(FRAMES).filter(([, f]) => f.group === frameTab && (!f.fmt || f.fmt === F.key)); // 저장한 커스텀은 만든 모양에서만
+  $('tiles').replaceChildren(...list.map(([name, f]) => {
+    const b = document.createElement('button');
+    b.className = 'tile' + (F.key === 'square' ? ' sq' : ''); b.setAttribute('aria-pressed', name === frame);
+    const pv = document.createElement('div'); pv.className = 'pv';
+    pv.append(thumbCanvas(f, F, F.key === 'strip' ? 90 : 240));
+    b.append(pv, name);
+    b.onclick = () => { frame = name; setFormat(F.key); drawTiles(); };
+    if (f.saved) { // 관리자 모드에서만 보이는 지우기
+      const del = document.createElement('span'); del.className = 'del'; del.setAttribute('role', 'button'); del.setAttribute('aria-label', `${name} 지우기`);
+      del.innerHTML = '<i class="ph-bold ph-x"></i>';
+      del.onclick = e => { e.stopPropagation(); if (confirm(`'${name}' 프레임을 지울까요?`)) deleteCustom(name); };
+      b.append(del);
+    }
+    return b;
+  }), ...(frameTab === 'custom' ? ADDS : []));
+  $('frameName').textContent = `지금 고른 프레임: ${frame}`;
+  ADDS.find(b => b.id === 'makeFrame').querySelector('span').textContent = `'${frame}' 바탕으로 새 프레임 꾸미기`;
+}
+{ // 내 사진을 프레임 배경으로 (꽉 채우기, 사진 칸에 가려지는 부분 있음)
+  const add = document.createElement('label');
+  add.className = 'tile add'; add.innerHTML = '<i class="ph-bold ph-image"></i>내 사진<input type="file" accept="image/*" hidden>';
+  add.querySelector('input').onchange = async e => {
+    const file = e.target.files[0]; if (!file) return;
+    const img = new Image(); img.src = URL.createObjectURL(file); await img.decode();
+    FRAMES['내 사진'] = {group: 'custom', ink: '#FFFFFF', shadow: 'rgba(0,0,0,.5)', draw: (c, F) => cover(c, img, F.w, F.h)};
+    frame = '내 사진'; setFormat(F.key); drawTiles();
+    e.target.value = '';
+  };
+  ADDS.push(add);
+}
+{ // GPT 그림: 탭의 ChatGPT에 요청문을 넘기고, 만든 그림을 불러와 그림 프레임처럼 씀 (무료, API 키 없음)
+  const add = document.createElement('button');
+  add.className = 'tile add'; add.innerHTML = '<i class="ph-bold ph-sparkle"></i>GPT로 만들기';
+  add.onclick = () => $('gptDlg').showModal();
+  ADDS.push(add);
+}
+const gptPrompt = wish => `인생네컷 포토부스 프레임 배경 그림을 그려줘.
+- 원하는 모습: ${wish}
+- 세로 2:3 비율 (1024x1536)
+- 위쪽 3/4은 사진 4장이 덮으니 하늘이나 단순한 배경으로, 주요 풍경과 볼거리는 아래쪽 1/4에 모아줘
+- 글자, 사람 얼굴, 로고는 넣지 마
+- 따뜻하고 선명한 일러스트 느낌`;
+$('gptOpen').onclick = async () => {
+  const wish = $('gptWish').value.trim();
+  if (!wish) { $('gptWish').focus(); return; }
+  const text = gptPrompt(wish);
+  await navigator.clipboard?.writeText(text).catch(() => {});
+  toast('요청문을 복사했어요. 안 채워져 있으면 붙여넣기 해요');
+  window.open(`https://chatgpt.com/?q=${encodeURIComponent(text)}`, '_blank');
+};
+$('gptFile').onchange = async e => {
+  const file = e.target.files[0]; if (!file) return;
+  const img = new Image(); img.src = URL.createObjectURL(file); await img.decode();
+  FRAMES['GPT 그림'] = {...sceneOf({strip: img, square: img}, '#FFFFFF', 'rgba(0,0,0,.6)'), group: 'custom'};
+  frame = 'GPT 그림'; setFormat(F.key); drawTiles();
+  e.target.value = ''; $('gptDlg').close();
+};
+$('gptClose').onclick = () => $('gptDlg').close();
+// ---------- 커스텀 프레임 (관리자) ----------
+// "커스텀" 탭을 1.5초 꾹 누르면 관리자 모드: 지금 고른 프레임을 바탕으로 스티커·펜으로 꾸며 이름 붙여 저장, 저장한 것 지우기.
+// 저장은 이 기기(태블릿) 안 IndexedDB. 꾸민 모양(세로 네컷/4x6)에서만 보임. 문구·날짜는 손님 것이 위에 그대로 들어감
+{
+  const make = document.createElement('button');
+  make.id = 'makeFrame'; make.className = 'tile add admin'; make.innerHTML = '<i class="ph-bold ph-paint-brush"></i><span></span>';
+  make.onclick = () => {
+    editing = {base: frame}; photos = []; strokes = []; stickers = [];
+    go('review'); setMode('sticker'); setPanel(true);
+  };
+  ADDS.push(make);
+  const tab = $('frameTabs').querySelector('[data-tab="custom"]');
+  let timer = 0;
+  tab.addEventListener('pointerdown', () => timer = setTimeout(() => {
+    const on = !('admin' in document.body.dataset);
+    if (on) document.body.dataset.admin = ''; else delete document.body.dataset.admin;
+    frameTab = 'custom'; drawTiles(); toast(on ? '관리자 모드: 프레임을 꾸며 저장할 수 있어요' : '관리자 모드를 껐어요');
+  }, 1500));
+  for (const t of ['pointerup', 'pointerleave', 'pointercancel']) tab.addEventListener(t, () => clearTimeout(timer));
+}
+const DB = new Promise((ok, no) => {
+  const r = indexedDB.open('booth', 1);
+  r.onupgradeneeded = () => r.result.createObjectStore('frames', {keyPath: 'name'});
+  r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
+});
+const idb = async (mode, fn) => {
+  const t = (await DB).transaction('frames', mode), r = fn(t.objectStore('frames'));
+  return new Promise((ok, no) => { t.oncomplete = () => ok(r.result); t.onerror = () => no(t.error); });
+};
+function addCustom(rec) { // rec = {name, fmt, blob, ink, shadow, label, layout}
+  const img = new Image(); img.onload = () => refresh(); img.src = URL.createObjectURL(rec.blob);
+  FRAMES[rec.name] = {group: 'custom', saved: true, fmt: rec.fmt, ink: rec.ink, shadow: rec.shadow, label: rec.label, layout: rec.layout, title: rec.title, sub: rec.sub, logo: rec.logo && logoImg(rec.logo), top: rec.top && logoImg(rec.top),
+    draw: (c, Fm) => { if (img.naturalWidth) cover(c, img, Fm.w, Fm.h); else { c.fillStyle = '#888'; c.fillRect(0, 0, Fm.w, Fm.h); } }};
+}
+idb('readonly', s => s.getAll()).then(list => { list.forEach(addCustom); refresh(); }).catch(() => {});
+async function saveCustom() {
+  let name = prompt('새 프레임 이름을 적어요', '')?.trim();
+  if (!name) return;
+  if (FRAMES[name] && !FRAMES[name].saved) name += ' (커스텀)'; // 기본 프레임 이름과 겹치지 않게 (같은 커스텀 이름이면 덮어씀)
+  const base = FRAMES[editing.base];
+  const c = document.createElement('canvas'); c.width = F.w*S; c.height = F.h*S;
+  const ctx = c.getContext('2d'); ctx.scale(S, S); base.draw(ctx, F); drawDeco(ctx); // 바탕 + 스티커·펜 (사진 칸·문구는 빼고)
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', .92));
+  const rec = {name, fmt: F.key, blob, ink: base.ink, shadow: base.shadow, label: base.label, layout: base.layout, title: base.title, sub: base.sub, logo: base.logo && base.logo.src.split('/frames/').pop(), top: base.top && base.top.src.split('/frames/').pop()};
+  try { await idb('readwrite', s => s.put(rec)); }
+  catch (e) { toast(`저장하지 못했어요: ${e.message}`); return; }
+  addCustom(rec); frame = name; strokes = []; stickers = []; setPanel(false);
+  setFormat(F.key); go('frame'); toast(`'${name}' 프레임을 저장했어요`);
+}
+async function deleteCustom(name) {
+  await idb('readwrite', s => s.delete(name)).catch(e => toast(e.message));
+  delete FRAMES[name];
+  if (frame === name) { frame = Object.keys(FRAMES)[0]; setFormat(F.key); }
+  drawTiles();
+}
+$('frameNext').onclick = () => go(photos.slice(0, cutCount()).filter(Boolean).length === cutCount() ? 'review' : 'shoot');
+
+// ---------- 3. 촬영 ----------
+// 평균 색에서 노출/화이트밸런스 게인 계산 (살짝 따뜻하게)
+// ponytail: 전체 평균 기반 gray-world, 배경색이 강하면 틀어짐. 얼굴 기준 보정이 필요하면 얼굴 영역만 샘플링
+function gains(mr, mg, mb) {
+  const avg = (mr + mg + mb) / 3;
+  const lum = Math.max((0.299*mr + 0.587*mg + 0.114*mb) / 255, 0.01);
+  const exp = Math.min(Math.max(TARGET_LUM / lum, 0.9), 1.6);
+  const wb = c => 1 + (avg / Math.max(c, 1) - 1) * WB_STRENGTH;
+  return [wb(mr)*exp*1.02, wb(mg)*exp, wb(mb)*exp*0.98];
+}
+console.assert(gains(60,60,60)[1] > 1.4, '어두운 사진은 밝아져야 함');
+console.assert(Math.abs(gains(133,133,133)[1] - 1) < 0.01, '적정 노출 회색은 그대로');
+console.assert(gains(120,120,60)[2] > gains(120,120,60)[0], '노란 캐스트는 파랑을 올려야 함');
+
+function enhance(c) {
+  const ctx = c.getContext('2d', {willReadFrequently: true});
+  const img = ctx.getImageData(0, 0, c.width, c.height), d = img.data;
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < d.length; i += 64) { r += d[i]; g += d[i+1]; b += d[i+2]; n++; }
+  const [gr, gg, gb] = gains(r/n, g/n, b/n);
+  for (let i = 0; i < d.length; i += 4) { d[i] *= gr; d[i+1] *= gg; d[i+2] *= gb; }
+  ctx.putImageData(img, 0, 0);
+  const o = document.createElement('canvas'); o.width = c.width; o.height = c.height;
+  const octx = o.getContext('2d');
+  octx.filter = 'contrast(1.05) saturate(1.12)';
+  octx.drawImage(c, 0, 0);
+  octx.filter = 'blur(10px)'; octx.globalAlpha = GLOW;
+  octx.drawImage(c, 0, 0);
+  return o;
+}
+
+function capture() { // 화면의 밝은 틀(.guide)에 보이는 부분 그대로 잘라 찍음: 긴 변 PW(1440)
+  const vw = video.videoWidth, vh = video.videoHeight, a = slotAspect();
+  // 비디오는 object-fit:cover로 화면을 채움 → 틀의 화면 좌표를 비디오 픽셀 좌표로 바꿈. 틀은 가운데라 거울 모드여도 위치 같음
+  const V = video.getBoundingClientRect(), G = $('guide').getBoundingClientRect(), k = Math.max(V.width / vw, V.height / vh);
+  const sx = (G.left - V.left - (V.width - vw*k)/2) / k, sy = (G.top - V.top - (V.height - vh*k)/2) / k, sw = G.width / k, sh = G.height / k;
+  const [W, H] = a >= 1 ? [PW, Math.round(PW/a)] : [Math.round(PW*a), PW];
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  ctx.translate(W, 0); ctx.scale(-1, 1); // 화면처럼 거울 모드
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, W, H);
+  return $('auto').checked ? enhance(c) : c;
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const steps = [...$('steps').children];
+
+async function takeCut(i) {
+  $('steps').hidden = false;
+  steps.forEach((s, j) => s.hidden = j >= cutCount());
+  steps.forEach((s, j) => s.className = photos[j] && j !== i ? 'done' : j === i ? 'now' : '');
+  for (let n = COUNTDOWN; n > 0; n--) { count.innerHTML = `<span>${n}</span>`; await sleep(1000); }
+  count.textContent = '';
+  $('flash').classList.add('on'); photos[i] = capture();
+  requestAnimationFrame(() => $('flash').classList.remove('on'));
+  steps[i].className = 'done';
+  renderStrip(); await sleep(900);
+}
+
+async function run(cuts) {
+  busy = true; go('shoot'); $('shoot').hidden = true;
+  await camReady; // 카메라 첫 화면이 나온 뒤에 카운트다운 (안 그러면 검은 사진)
+  for (const i of cuts) await takeCut(i);
+  $('steps').hidden = true; busy = false;
+  go('review');
+}
+$('shoot').onclick = () => { photos = []; strokes = []; stickers = []; renderStrip(); run([...Array(cutCount()).keys()]); };
+
+// 확인 화면: 결과 위 컷별 "다시 찍기" 버튼
+for (let i = 0; i < 4; i++) {
+  const b = document.createElement('button');
+  b.className = 'cut'; b.setAttribute('aria-label', `${i+1}번 컷 다시 찍기`);
+  b.innerHTML = '<span><i class="ph-bold ph-arrow-counter-clockwise"></i>다시</span>';
+  b.onclick = () => !busy && run([i]);
+  card.append(b);
+}
+
+// 꾸미기 엣지 패널: 손잡이를 누르면 열고 닫음. 손잡이를 왼쪽으로 밀면 열고, 오른쪽으로 밀면 닫음
+const setPanel = open => { $('reviewPanel').classList.toggle('open', open); $('edgeBtn').setAttribute('aria-expanded', open); };
+{
+  let x0 = null;
+  $('edgeBtn').addEventListener('pointerdown', e => { x0 = e.clientX; });
+  $('edgeBtn').addEventListener('pointerup', e => {
+    if (x0 == null) return;
+    const dx = e.clientX - x0, open = $('reviewPanel').classList.contains('open'); x0 = null;
+    setPanel(dx < -20 ? true : dx > 20 ? false : !open);
+  });
+}
+
+// ---------- 4. 확인 → 5. 완성 ----------
+$('finish').onclick = () => editing ? saveCustom() : go('done');
+$('retakeAll').onclick = () => { photos = []; strokes = []; stickers = []; renderStrip(); go('shoot'); };
+$('home').onclick = () => go('start');
+
+// 인쇄 여유(bleed): CP1500은 여백 없음 인쇄에서 그림을 약 7% 키워 가장자리를 잘라냄 (2026-10-03 시험 인쇄: 문구·날짜·옆 여백이 잘림).
+// 그래서 인쇄 그림을 엽서(100x148mm)보다 크게 만들고, 늘어난 둘레는 프레임 배경만(사진·글자 없이) 채움 → 잘려도 내용은 안 잘림.
+// 둘레 여유(엽서 mm 기준). 시험 인쇄로 맞춤: 양옆 4.3·위 5.5mm일 때 양옆·위에 여분 배경이 1mm쯤 보였고 아래는 맞았음 → 양옆·위 1mm씩 줄임.
+// 여분 배경이 보이면 그쪽 값을 줄이고, 내용이 잘리면 늘림. 아래는 나머지(약 3.5mm): 엽서가 사진보다 살짝 짧아서 프레임 맨 아랫단 1.5mm쯤은 잘림 (날짜 아래 여유 약 3mm 안)
+// 2026-10-25 시험 인쇄(10/21 설정): 위는 절취선에 딱 맞음, 아래는 약 5mm 잘려 코난 날짜(맨 아래 약 1mm 위)가 걸림
+//   → 아래 여유 3.5 → 5mm. 위는 그대로, 용지 비율 때문에 그림이 약 1% 작아지고 양옆 여유 3.3 → 3.8mm
+const PRINT_SIDE_MM = 3.8, PRINT_TOP_MM = 4.4, HAGAKI = 148 / 100;
+function printSheet() { // 세로 네컷은 두 줄(반으로 자르면 2장), 4x6 네컷은 그대로 한 장
+  const two = F === FORMATS.strip, sw = strip.width * (two ? 2 : 1), sh = strip.height;
+  const W = Math.round(sw / (1 - 2 * PRINT_SIDE_MM / 100)), H = Math.round(W * HAGAKI);
+  const c = document.createElement('canvas'), ctx = c.getContext('2d');
+  c.width = W; c.height = H;
+  // 1) 둘레: 프레임 배경만 (사진·문구 없이) 크게 깔기
+  const bg = document.createElement('canvas'); bg.width = strip.width; bg.height = strip.height;
+  const b = bg.getContext('2d'); b.scale(bg.width / F.w, bg.height / F.h); FRAMES[frame].draw(b, F);
+  const k = Math.max(W / sw, H / sh), bw = strip.width * k, bx = (W - sw * k) / 2, by = (H - sh * k) / 2;
+  ctx.drawImage(bg, bx, by, bw, sh * k); if (two) ctx.drawImage(bg, bx + bw, by, bw, sh * k);
+  // 2) 완성 사진을 가운데에 원래 크기 그대로
+  const x0 = (W - sw) / 2, y0 = Math.min(H * PRINT_TOP_MM / 148, H - sh);
+  ctx.drawImage(strip, x0, y0); if (two) ctx.drawImage(strip, x0 + strip.width, y0);
+  // 자르는 선 표시 (세로 네컷): 두 줄 사이, 용지 위아래 가장자리에서 사진 시작 조금 아래까지. 흰 테두리+진한 선이라 어떤 배경에서도 보임
+  if (two) {
+    const x = W / 2, len = y0 + strip.width / 25;
+    for (const [w, color] of [[6, '#FFFFFF'], [2, '#555A63']]) {
+      ctx.lineWidth = w; ctx.strokeStyle = color;
+      for (const [y1, y2] of [[0, len], [H - len, H]]) { ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, y2); ctx.stroke(); }
+    }
+  }
+  return c;
+}
+const stamp = () => new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+const toBlob = c => new Promise(r => c.toBlob(r, 'image/png'));
+
+// 안드로이드 앱으로 실행 중이면 네이티브 기능 사용 (BoothPlugin.java: 갤러리 저장, 인쇄)
+// 번들러 없이 쓰므로 @capacitor/core의 registerPlugin이 없음 → 브리지의 nativePromise로 직접 호출
+const plugin = name => new Proxy({}, {get: (_, method) => opts => Capacitor.nativePromise(name, method, opts)});
+const Native = window.Capacitor?.isNativePlatform?.() ? {Booth: plugin('Booth'), Filesystem: plugin('Filesystem'), Share: plugin('Share')} : null;
+function toast(text) {
+  const t = $('toast'); t.innerHTML = `<i class="ph-bold ph-check-circle"></i>${text}`; t.hidden = false;
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.hidden = true, 2600);
+}
+
+async function download(canvas, suffix) {
+  if (Native) {
+    try { await Native.Booth.saveImage({data: canvas.toDataURL('image/png'), name: `네컷_${stamp()}${suffix}.png`}); toast('사진 앱의 네컷부스 앨범에 저장했어요'); }
+    catch (e) { toast(e.message); }
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(await toBlob(canvas));
+  a.download = `네컷_${stamp()}${suffix}.png`;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+$('save').onclick = () => download(strip, '');
+
+// 인쇄: 매수를 고르고 확인 → 앱은 와이파이 프린터(CP1500)로 바로 보냄 (BoothPlugin.printDirect), 웹은 브라우저 인쇄 창
+const MAX_COPIES = 10;
+let copies = 1, printing = false; // printing: 프린터로 보내는 중 (겹쳐 보내지 않게)
+const setCopies = n => { copies = Math.min(MAX_COPIES, Math.max(1, n)); $('cpN').textContent = copies; };
+$('print').onclick = () => {
+  if (printing) { toast('앞 사진을 프린터로 보내는 중이에요. 끝나면 다시 눌러 주세요'); return; }
+  setCopies(1); $('printDlg').showModal();
+};
+$('cpMinus').onclick = () => setCopies(copies - 1);
+$('cpPlus').onclick = () => setCopies(copies + 1);
+$('cpCancel').onclick = () => $('printDlg').close();
+$('cpOk').onclick = async () => {
+  $('printDlg').close();
+  if (Native) {
+    const data = printSheet().toDataURL('image/jpeg', .95), n = copies;
+    printing = true;
+    toast(`${n}장 인쇄를 보내는 중이에요 (앞 인쇄가 있으면 끝난 뒤 이어서 나와요)`);
+    try { await Native.Booth.printDirect({data, copies: n}); toast(`${n}장 인쇄를 보냈어요`); }
+    catch (e) {
+      toast(e.message);
+      // 프린터를 아예 못 찾았을 때만 안드로이드 인쇄 화면으로 (바쁘거나 거절이면 띄우지 않음: 앱 위를 덮어 QR 창이 가려짐)
+      if (e.code === 'NOT_FOUND') Native.Booth.print({data: printSheet().toDataURL('image/png')}).catch(e => toast(e.message));
+    } finally { printing = false; }
+    return;
+  }
+  const img = $('printImg');
+  img.onload = () => { img.onload = null; window.print(); };
+  img.src = printSheet().toDataURL('image/png');
+};
+
+// ponytail: Litterbox(catbox) 임시 업로드. 1시간 후 자동 삭제, 링크 아는 사람은 열람 가능. QR은 받기 페이지(사진 + 저장 버튼) 주소
+// (예전 tmpfiles.org는 광고·봇 인증 페이지가 끼어 다운이 안 됐음). 비공개 보관이 필요하면 자체 클라우드 스토리지로 교체
+const UPLOAD_TIMEOUT_MS = 30000; // 업로드가 이보다 오래 걸리면 끊고 한 번 더 시도 (예전엔 제한이 없어 진행 막대가 멈춘 채 QR이 안 나옴)
+async function upload(blob, name, tries = 2) { // multipart 폼 전송이라 CORS 사전 요청 없이 바로 올라감
+  const fd = new FormData();
+  fd.append('reqtype', 'fileupload'); fd.append('time', '1h'); fd.append('fileToUpload', blob, name);
+  try {
+    const res = await fetch('https://litterbox.catbox.moe/resources/internals/api.php', {method: 'POST', body: fd, signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS)});
+    const url = (await res.text()).trim();
+    if (!res.ok || !url.startsWith('https://')) throw new Error(url.slice(0, 60) || res.status);
+    return url;
+  } catch (e) {
+    if (tries > 1) return upload(blob, name, tries - 1);
+    throw e.name === 'TimeoutError' ? new Error('시간 초과') : e;
+  }
+}
+// 폰에서 열리는 받기 페이지: 사진 + "사진 저장" 버튼. 아이폰은 공유 창(→ 이미지 저장 = 사진 앱), 그 외는 파일 다운로드
+const phonePage = (img, name) => `<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${T.title}</title>
+<style>body{margin:0;background:#ECEDEF;color:#141518;font-family:system-ui,sans-serif;text-align:center;padding:24px 16px 40px}
+h1{font-size:22px;margin:0 0 16px}img{max-width:100%;max-height:68vh;border-radius:4px;box-shadow:0 10px 30px rgba(20,21,24,.18)}
+button{display:block;width:100%;max-width:360px;margin:22px auto 10px;padding:18px;border:0;border-radius:99px;background:#FF3D7F;color:#141518;font:700 20px system-ui,sans-serif}
+p{margin:0;color:#4A4E57;font-size:14px;line-height:1.6}</style>
+<h1>${T.title}</h1><img id="p" src="${img}" alt="네컷 사진"><button id="s">사진 저장</button>
+<p>안 되면 사진을 길게 눌러 저장하세요.<br>1시간 뒤 자동으로 지워져요.</p>
+<script>s.onclick=async()=>{s.disabled=true;s.textContent='저장하는 중…';try{const b=await(await fetch(p.src)).blob(),f=new File([b],'${name}',{type:'image/jpeg'});
+if(/iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent)&&navigator.canShare&&navigator.canShare({files:[f]}))await navigator.share({files:[f]});
+else{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=f.name;a.click()}s.textContent='사진 저장'}
+catch(e){s.textContent=e.name==='AbortError'?'사진 저장':'다시 눌러 주세요'}s.disabled=false}<\/script>`;
+$('phone').onclick = async () => {
+  const dlg = $('qrDlg'), msg = $('qrMsg');
+  $('qr').innerHTML = '<div class="qrwait"><i class="ph-bold ph-cloud-arrow-up"></i><b id="qrPct">0%</b><div class="bar"><span id="qrBar"></span></div></div>';
+  msg.textContent = '사진을 올리고 있어요 (1/2)'; dlg.showModal();
+  // ponytail: 진행률은 시간으로 채움 (단계 상한 cap까지 천천히). 실제 업로드 진행률은 XHR upload 이벤트가 CORS 사전 요청을 만들어 Litterbox가 거절할 수 있어서 안 씀
+  let pct = 0, cap = 70;
+  const show = v => { pct = v; $('qrBar').style.width = `${v}%`; $('qrPct').textContent = `${Math.round(v)}%`; };
+  const tick = setInterval(() => show(pct + (cap - pct) * .06), 200);
+  try {
+    // JPEG: PNG는 6~10MB라 올리고 받는 데 오래 걸림 (JPEG .92는 약 1MB, 2026-10-24)
+    const name = `nekeot_${stamp()}.jpg`;
+    const img = await upload(await new Promise(r => strip.toBlob(r, 'image/jpeg', .92)), name);
+    show(Math.max(pct, 75)); cap = 95; msg.textContent = 'QR을 만들고 있어요 (2/2)';
+    const page = await upload(new Blob([phonePage(img, name)], {type: 'text/html'}), 'nekeot.html');
+    clearInterval(tick); show(100); await new Promise(r => setTimeout(r, 300)); // 100%를 잠깐 보여 줌
+    $('qr').replaceChildren();
+    new QRCode($('qr'), {text: page, width: 240, height: 240});
+    msg.textContent = '폰 카메라로 찍으면 사진과 저장 버튼이 나와요. 1시간 뒤 자동으로 지워져요.';
+  } catch (e) {
+    $('qr').replaceChildren();
+    msg.textContent = `올리지 못했어요 (${e.message}). 와이파이 연결을 확인하고 다시 눌러 주세요.`;
+  } finally { clearInterval(tick); }
+};
+$('qrClose').onclick = () => $('qrDlg').close();
+
+// 앱 전용: 안드로이드 공유 창 (카카오톡, Quick Share, 드라이브 등). 인터넷 없이 Quick Share 가능
+$('share').onclick = async () => {
+  try {
+    const data = strip.toDataURL('image/png').split(',')[1];
+    const {uri} = await Native.Filesystem.writeFile({path: `nekeot_${stamp()}.png`, data, directory: 'CACHE'});
+    await Native.Share.share({files: [uri]});
+  } catch (e) { if (!/cancel/i.test(e.message)) toast(e.message); }
+};
+
+// ---------- 카메라 ----------
+function cameraError(text) {
+  count.className = 'count msg'; count.textContent = text; $('shoot').disabled = true;
+}
+// 촬영 화면에 들어올 때마다 새로 켬. 숨겨진 화면에서 미리 켜두면 안드로이드 앱에서 화면이 멈춘 채로 나옴
+const stopCamera = () => { video.srcObject?.getTracks().forEach(t => t.stop()); video.srcObject = null; };
+const frameShown = () => new Promise(r => { video.videoWidth ? r() : video.addEventListener('loadeddata', r, {once: true}); setTimeout(r, 4000); });
+function startCamera() {
+  if (!navigator.mediaDevices) return Promise.resolve(cameraError('카메라는 https 주소에서만 켜져요.'));
+  if (video.srcObject?.getVideoTracks().some(t => t.readyState === 'live')) { video.play().catch(() => {}); return frameShown(); }
+  stopCamera();
+  // 여러 명 찍기용 광각: 4:3(센서 전체, 16:9처럼 위아래를 안 자름)으로 요청하고, 줌 되는 기기는 줌을 최소로
+  return navigator.mediaDevices.getUserMedia({video: {facingMode: 'user', width: {ideal: 1920}, height: {ideal: 1440}, aspectRatio: {ideal: 4/3}}, audio: false})
+    .then(s => { if (screen !== 'shoot') return s.getTracks().forEach(t => t.stop()); video.srcObject = s; video.play().catch(() => {});
+      const tr = s.getVideoTracks()[0], z = tr.getCapabilities?.().zoom;
+      if (z) tr.applyConstraints({advanced: [{zoom: z.min}]}).catch(() => {});
+      if (count.classList.contains('msg')) { count.className = 'count'; count.textContent = ''; $('shoot').disabled = false; }
+      return frameShown(); })
+    .catch(e => cameraError(`카메라를 열 수 없어요 (${e.name}). ${Native ? '설정 → 애플리케이션 → 네컷 부스 → 권한' : '주소창 옆 자물쇠'}에서 카메라를 허용해 주세요.`));
+}
+
+document.title = T.title;
+document.querySelector('.hero h1').textContent = $('caption').value = T.title;
+document.querySelector('.hero .sub').textContent = T.sub;
+{ // 행사용(교회·창업·부외대)이라 저장 없이 인쇄가 주 버튼, 공유 없이 인쇄·QR만
+  $('save').hidden = true; $('print').classList.add('primary', 'big');
+  $('doneSub').textContent = '인쇄하거나 폰으로 받을 수 있어요.';
+}
+if (ONE_FMT) { // 위 단계 표시에서 '모양'을 빼고 번호를 다시 매김
+  document.querySelector('#stepper li[data-s="format"]').remove();
+  document.querySelectorAll('#stepper li b').forEach((b, i) => b.textContent = i + 1);
+}
+setFormat(ONE_FMT || 'strip');
+drawFan();
+go('start');
+document.fonts.load(`800 20px ${FONT}`, T.title + '0123456789.').then(refresh);
+</script>
+</body>
+</html>
